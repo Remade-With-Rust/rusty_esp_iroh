@@ -143,7 +143,7 @@ interface address. The two-laptop row stays in
   dialled. The firmware now has a `relay` feature of its own that turns it on
   (`NodeConfig::relay = cfg!(feature = "relay")`), and **the relay-on
   firmware compiles** (2026-09-02, `cargo build --release --features relay`,
-  Xtensa, 5 min 5 s cold): app image **4 766 784 B**,
+  Xtensa, 5 min 5 s in a cold target dir with the IDF already installed): app image **4 766 784 B**,
   75.77 % of the 6 MiB factory partition, against 4 660 544 B
   with relay off — so the relay tier costs 106 240 B of flash
   on top of the LAN tier. Nothing has run it.
