@@ -3,6 +3,8 @@
 # configuration with Janus additions marked.
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+# The IDF-side table only matters for `idf.py flash`; this project flashes with
+# espflash and `partitions.csv` (6 MiB factory), see the runner in .cargo/config.toml.
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
 # Tokio's current_thread runtime runs everything on the main task's stack.

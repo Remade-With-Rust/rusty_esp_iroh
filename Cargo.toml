@@ -18,6 +18,9 @@ rust-version = "1.85"
 [workspace.lints.rust]
 unsafe_code = "deny"
 missing_docs = "warn"
+# esp-idf-sys registers only the IDF components it compiled as known cfgs; the
+# mdns ones are read by rusty_esp_iroh-esp and may legitimately be absent.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(esp_idf_comp_mdns_enabled)", "cfg(esp_idf_comp_espressif__mdns_enabled)"] }
 
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "deny"

@@ -18,6 +18,7 @@ disabled, node and client in one process over loopback.
 | clippy `--all-targets -D warnings` (core, host, esp on host), `cargo fmt --check` | clean |
 | `riscv32imac-unknown-none-elf` core-only and `alloc` | check green |
 | `ring` / `aws-lc-sys` in the graph | **none** — `iroh` with `default-features = false`, our provider |
+| `-host` with `--features relay`: check, clippy `-D warnings`, unit tests (2026-09-02) | clean, 3 pass — compiled, no relay dialled |
 
 ### The loopback run
 
@@ -42,11 +43,75 @@ The N0 kill test asked for ten minutes between two laptops; this is one
 machine and seconds. The `node` and `client` examples are the two-laptop run
 and its numbers go here when it happens.
 
+## The Xtensa toolchain wall (2026-09-01)
+
+The mesh firmware's first builds stopped inside the compiler, not in Janus
+code: esp 1.97.0.0 (rustc 1.97.0-nightly 2026-07-08, Xtensa LLVM) aborts on
+`rustls` with `Cannot select: XtensaISD::PCREL_WRAPPER TargetConstantPool …
+"u16"` in `NewSessionTicketExtensions::read`. Reproduced with rustls alone in
+a scratch crate for `xtensa-esp32s3-espidf` (no IDF needed; ~25 s a variant):
+
+| variant | result |
+|---|---|
+| 0.23.41, `std+logging+tls12`, opt `s`, codegen-units 1 (the firmware's) | **crash** |
+| same, opt `z` | compiles |
+| same, opt `s`, codegen-units 16 | compiles |
+| same, opt `3` | **crash** (in the same function, different constant) |
+| without `tls12`, opt `s` | **crash** |
+| rustls 0.23.35, opt `s` | **crash** |
+
+With only rustls at `z` the build still stopped in the compiler; the profile
+that builds is `opt-level = "z"` for everything and `lto = false` (fat LTO
+re-hits it even at `z`), `codegen-units = 1`, `panic = "abort"`. esp-rs has
+published a 1.98.0.0 Xtensa toolchain; whether it fixes this is unmeasured,
+and LTO returns when it does.
+
+## The first mesh firmware build (2026-09-02)
+
+`firmware/xiao-s3-sense-idf-mesh`, Windows 11, esp 1.97.0.0 (rustc
+1.97.0-nightly, Xtensa LLVM), ESP-IDF v5.5.1 from the global tools dir
+(`esp-idf-build.json` → `~/.espressif/esp-idf/v5.5.1`), `espressif/mdns`
+1.8, release profile `opt-level = "z"`, `lto = false`, `codegen-units = 1`,
+`panic = "abort"`, `build-std-features = ["optimize_for_size"]`, relay off,
+`rusty_esp_mid-esp` with `allow-insecure-dev`. Builds and links; no board
+has run it.
+
+| measure | value | method |
+|---|---|---|
+| app image | **4 660 544 B**, 74.08 % of the 6 MiB factory partition | `espflash save-image --chip esp32s3 --flash-size 8mb --partition-table partitions.csv` |
+| `.flash.text` / `.flash.rodata` | 3 645 480 B / 894 364 B | `xtensa-esp-elf-size -A` |
+| `.iram0.text` / `.dram0.data` / `.dram0.bss` | 88 815 B / 30 420 B / 28 584 B | same |
+| ELF with debug info | 10 296 192 B | `ls -l` |
+| final link after a source edit | 1 min 50 s | `cargo build --release`, warm target dir |
+
+Symbol census of the ELF (`xtensa-esp-elf-nm -C`): `mdns_init` and
+`mdns_service_add` are linked and `advertise_sidecar` is present, so the
+`esp_idf_comp_espressif__mdns_enabled` gate resolved true through the `-esp`
+crate's embuild `build.rs`; `esp_sntp_init`, `esp_vfs_eventfd_register`, the
+`gethostname` shim, 32 `aes_gcm` symbols (the rustcrypto provider), 338
+`iroh::endpoint` and 2 503 `rustls::` symbols.
+
+Two build facts worth their line. `gethostname` is the one symbol ESP-IDF
+lacks that the graph references (hickory-resolver's `resolv_conf`, linked
+even though iroh's DNS is replaced at runtime); the firmware `main.rs`
+carries n0's one-line shim (an empty hostname). And cargo prints "patch
+`rusty_esp_core` … was not used" three times per build: that is the
+`build-std` sysroot graph reading the umbrella's per-repo patches, not the
+firmware graph — the lockfile has zero `[[patch.unused]]` rows and
+`cargo metadata --locked --filter-platform=xtensa-esp32s3-espidf` passed 8
+of 8 runs (the wall in mission plan §8 is closed for this firmware).
+
+n0's blog figures for their examples are 3.6–4.35 MB with fat LTO and
+`opt-level = "s"`; this image is 4.66 MB without LTO, with the mDNS
+component and the mID crates on top.
+
 ## Not yet measured
 
-- **Anything on a chip**: the `xiao-s3-sense-idf-mesh` firmware's first
-  build (below when it happens), then N1's echo RTT and `EndpointId`
-  stability across reflash.
-- The relay path (short ticket from another network): the host node runs
-  LAN-direct; the relay configuration is written for the chip, not yet on.
+- **Anything on a chip**: the `xiao-s3-sense-idf-mesh` firmware builds
+  (above) but no board has run it — boot, Wi-Fi, SNTP, the NVS key, N1's
+  echo RTT and `EndpointId` stability across reflash all wait for hardware.
+- The relay path (short ticket from another network): written behind the
+  `-host` crate's `relay` feature (`relay.rs`: n0's std DNS resolver and the
+  relay-certificate verifier), clippy-clean on the host; no relay has been
+  dialled, and the firmware builds with relay off.
 - Two laptops for ten minutes.

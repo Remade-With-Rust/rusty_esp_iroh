@@ -33,4 +33,10 @@ ignore = []
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = ["https://github.com/Remade-With-Rust/rusty_esp_core"]
+allow-git = [
+  "https://github.com/Remade-With-Rust/rusty_esp_core",
+  "https://github.com/Remade-With-Rust/rusty_esp_mid",
+  # n0's rustls-rustcrypto branch: the pure-Rust TLS provider iroh needs to
+  # build for Xtensa, and what keeps ring/aws-lc out of the host graph too.
+  "https://github.com/n0-computer/rustls-rustcrypto",
+]

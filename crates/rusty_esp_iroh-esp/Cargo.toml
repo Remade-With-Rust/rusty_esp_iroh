@@ -29,5 +29,9 @@ rusty_esp_mid-esp = { git = "https://github.com/Remade-With-Rust/rusty_esp_mid",
 esp-idf-svc = { version = "0.52", optional = true }
 log = "0.4"
 
+[build-dependencies]
+# Re-emits esp-idf-sys's cfgs to this crate (build.rs); a no-op on the host.
+embuild = { version = "0.33", features = ["espidf"] }
+
 [lints]
 workspace = true

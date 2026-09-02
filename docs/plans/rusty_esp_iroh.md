@@ -12,7 +12,8 @@ key is bound to the device DID).
 
 Written 2026-09-01. Status: **N0 shipped on the host; N1 and N4 host halves
 done (node + client, the sidecar contract, the JanusFleet proposal in
-mata-master); the board is next.** Numbers in `docs/LEDGER.md`.
+mata-master); the mesh firmware builds (2026-09-02, 4.66 MB image); the board
+is next.** Numbers in `docs/LEDGER.md`.
 
 ---
 
@@ -99,7 +100,7 @@ this crate plus MQTT ingest.
 | # | Deliverable | Kill test |
 |---|---|---|
 | **N0** ✅ host 2026-09-01 | `-core`: ALPNs, `janus1…` ticket (QR text, no heap), `Binding` (device key over `EndpointId`), the kms-shaped caller `Assertion`, postcard `janus/rpc/1` with the authorisation rule, `janus/media/1` framing + loss counter, the `mata-oem-sidecar/rpc/1` JSON + TXT contract — 18 tests, riscv32 both rungs. `-host`: `Node` (four ALPNs on iroh 1.1, pure-Rust TLS) + `Client`; `examples/{node,client}`; loopback test | **passed on one machine:** rpc without an assertion → `Unauthorized`, stranger → `Denied`, owner adopts (320 B), rotation backwards refused; media 400/400 datagrams and 100/100 uni-streams, 0 lost; echo min 19.9 ms per fresh connection. **Two laptops for ten minutes: not yet run** (`docs/LEDGER.md`) |
-| **N1** (J3) ◐ host half 2026-09-01 | `-esp` on XIAO S3 Sense (PSRAM tier): n0's configuration reproduced with the Janus ALPNs; endpoint key in NVS bound to the mID DID. **Written:** `idf::{register_eventfd, sync_time, advertise_sidecar}`, `NodeIdentity` from NVS via `rusty_esp_mid-esp`, `firmware/xiao-s3-sense-idf-mesh` (LAN-direct; relay config is the next step) | short-ticket dial from another network through a relay; echo RTT recorded; `EndpointId` stable across reflash — **needs the board** |
+| **N1** (J3) ◐ host half 2026-09-01 | `-esp` on XIAO S3 Sense (PSRAM tier): n0's configuration reproduced with the Janus ALPNs; endpoint key in NVS bound to the mID DID. **Written:** `idf::{register_eventfd, sync_time, advertise_sidecar}`, `NodeIdentity` from NVS via `rusty_esp_mid-esp`, `firmware/xiao-s3-sense-idf-mesh` **builds 2026-09-02** (4.66 MB image, LAN-direct; `relay.rs` written behind the host `relay` feature) | short-ticket dial from another network through a relay; echo RTT recorded; `EndpointId` stable across reflash — **needs the board** |
 | **N2** | `janus/media/1` carrying J1's MJPEG; `-host` writes frames to disk | FPS at the receiver vs at the source recorded; a second subscriber does not stall the first |
 | **N3** | `-bridge` on a Pi fronting a C6 (ESP-NOW) and a LoRa node | the C6, which cannot run iroh, appears in the home computer's app through the Pi; its manifest is the C6's own signed manifest |
 | **N4** ◐ host half 2026-09-01 | the home-computer joint: `mata-oem-sidecar/rpc/1` answered (`sidecar::handle`, the pair client's TXT fields); `DeviceAttachment` stored; `JanusFleet` `HostAdapter` on the home computer — **proposed in `mata-master` branch `janus-fleet-proposal`**: `ResourceClass::MediaCapture` + `ResourceType::Media` + a rate-card row, and `packages/janus-fleet` with the adapter, tests green | the device shows under its own DID in the app after QR adoption; removing it from the roster ends its session within one reconnect — **needs the board and the daemon glue** |

@@ -15,8 +15,13 @@ serial prints the DID, the endpoint id and the `janus1…` ticket.
 
 As for the J1/J2 firmware: `espup`, `ldproxy`, `espflash`, the esp env, a
 non-venv Python 3, and on Windows a short `CARGO_TARGET_DIR` plus
-`git config --global core.longpaths true`. Run `cargo generate-lockfile` once
-before the very first `cargo build` (mission plan §8).
+`git config --global core.longpaths true`. Inside the Janus umbrella run
+`python tools/gen-sibling-patches.py` once so this repo's own
+`.cargo/config.toml` patches `rusty_esp_core` and `rusty_esp_mid` to the
+sibling checkouts; a standalone clone needs nothing (siblings resolve from
+GitHub). The IDF lives in the global tools dir
+(`ESP_IDF_TOOLS_INSTALL_DIR = "global"`, pinned in `.cargo/config.toml` and
+the manifest), never inside the project (mission plan §8).
 
 ## Build, flash, dial
 
@@ -24,8 +29,12 @@ before the very first `cargo build` (mission plan §8).
 export CARGO_TARGET_DIR=C:/janus-i                 # Windows only
 export JANUS_WIFI_SSID=yournet JANUS_WIFI_PASS=yourpass
 cargo build --release
-cargo run --release                                # espflash flash --monitor
+cargo run --release      # espflash flash --monitor --partition-table partitions.csv
 ```
+
+An iroh node is a 4.66 MB image here (ledger), so the stock "single app, large" partition
+table (1.5 MiB factory) cannot hold it: `partitions.csv` gives the app 6 MiB
+of the 8 MB flash and the runner passes it to espflash.
 
 Serial prints `TICKET janus1…`. On the laptop:
 
@@ -48,7 +57,14 @@ cargo run -p rusty_esp_iroh-host --example client -- <ticket> media 10
 
 ## Build status
 
-Not yet built; the ledger records the first build.
+**Builds (2026-09-02)** on esp 1.97.0.0 / ESP-IDF v5.5.1 with `espressif/mdns`
+1.8: app image 4 660 544 B, 74 % of the 6 MiB factory partition; mDNS, SNTP,
+eventfd, the rustcrypto TLS provider and the iroh endpoint all present in the
+ELF (`docs/LEDGER.md`, "The first mesh firmware build"). **Not flashed:** no
+board yet. The profile carries two things because of the toolchain:
+`opt-level = "z"` everywhere and `lto = false` (the Xtensa LLVM crash on
+`rustls`, ledger), and `main.rs` carries a `gethostname` shim for the one
+libc symbol ESP-IDF lacks that hickory-resolver references.
 
 ## Notes
 
@@ -56,7 +72,9 @@ Not yet built; the ledger records the first build.
   board has neither flash encryption nor NVS encryption enabled; the firmware
   logs a warning when the partition is plaintext. A shipping build drops the
   feature and `EspNvsKv::open` refuses a plaintext partition.
-- Relay + pkarr (reach from another network) needs n0's std DNS shim and the
-  relay-certificate verifier from `iroh-esp32-examples`; that is the next step
-  on this firmware and lands behind `NodeConfig::relay`.
+- Relay + pkarr (reach from another network) is written behind the `-host`
+  crate's `relay` feature (`relay.rs`: n0's std DNS resolver and the relay
+  certificate verifier from `iroh-esp32-examples`); this firmware builds with
+  relay off (`NodeConfig::relay = false`) until the LAN-direct path has run on
+  a board.
 - The media source is a test pattern until the J1 camera pipeline is wired in.

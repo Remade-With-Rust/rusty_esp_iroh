@@ -19,10 +19,27 @@ name = "xiao-s3-sense-idf-mesh"
 harness = false # no cargo test harness on the chip
 
 [profile.release]
-opt-level = "s"
-lto = true
+# "z", not "s": with fat LTO the whole program is re-optimised at the binary's
+# level, and the esp 1.97.0.0 Xtensa LLVM crashes on rustls at "s" (see the
+# rustls override below and rusty_esp_iroh/docs/LEDGER.md). n0 ships "s";
+# revisit when the toolchain moves.
+opt-level = "z"
+# No fat LTO: it re-optimises the merged module and hits the same Xtensa LLVM
+# crash (in `ServerExtensions::read`) even at "z". Without LTO each crate keeps
+# the codegen that compiled; the image is larger (the 6 MiB factory partition
+# in partitions.csv has room). Re-enable when the toolchain moves.
+lto = false
 codegen-units = 1
 panic = "abort"
+
+# The esp toolchain's Xtensa LLVM (1.97.0.0, 2026-07) fails to select a
+# constant-pool reference in rustls' `NewSessionTicketExtensions::read`
+# ("Cannot select: XtensaISD::PCREL_WRAPPER") at opt-level "s", 2 and 3, for
+# rustls 0.23.41 and 0.23.43 alike; "z" takes a codegen path around it
+# (probed crate-alone, see rusty_esp_iroh/docs/LEDGER.md). The rest of the
+# image stays at "s".
+[profile.release.package.rustls]
+opt-level = "z"
 
 [profile.dev]
 debug = true
@@ -54,6 +71,10 @@ rusty_esp_iroh-esp = { path = "../../crates/rusty_esp_iroh-esp", default-feature
 
 [build-dependencies]
 embuild = "0.33"
+
+# esp-idf-sys registers only the IDF components it compiled as known cfgs.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(esp_idf_comp_mdns_enabled)", "cfg(esp_idf_comp_espressif__mdns_enabled)"] }
 
 [package.metadata.esp-idf-sys]
 esp_idf_version = "v5.5.1"

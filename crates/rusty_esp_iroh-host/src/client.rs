@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use iroh::endpoint::Connection;
 use iroh::endpoint::presets;
-use iroh::{Endpoint, EndpointAddr, EndpointId, RelayMode, RelayUrl, SecretKey};
+use iroh::{Endpoint, EndpointAddr, EndpointId, RelayUrl, SecretKey};
 use rusty_esp_iroh_core::alpn;
 use rusty_esp_iroh_core::assertion::{Assertion, DEFAULT_TTL_SECS};
 use rusty_esp_iroh_core::media::{HEADER_LEN, LossCounter, PacketHeader, Subscribe};
@@ -60,13 +60,9 @@ impl Client {
         caller: Option<DeviceKey>,
         relay: bool,
     ) -> Result<Self> {
-        let mut builder = Endpoint::builder(presets::Empty)
-            .crypto_provider(Arc::new(crate::crypto::provider()))
-            .relay_mode(if relay {
-                RelayMode::Default
-            } else {
-                RelayMode::Disabled
-            });
+        let mut builder =
+            Endpoint::builder(presets::Empty).crypto_provider(Arc::new(crate::crypto::provider()));
+        builder = crate::configure_reach(builder, relay)?;
         if let Some(s) = secret {
             builder = builder.secret_key(s);
         }

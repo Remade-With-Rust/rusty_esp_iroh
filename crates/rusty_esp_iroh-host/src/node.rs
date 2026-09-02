@@ -12,15 +12,15 @@
 //! chip adds (NVS, Wi-Fi, SNTP, mDNS) lives in `rusty_esp_iroh-esp`.
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
+use iroh::Endpoint;
 use iroh::endpoint::Connection;
 use iroh::endpoint::presets;
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
-use iroh::{Endpoint, RelayMode};
 use rusty_esp_iroh_core::alpn;
 use rusty_esp_iroh_core::esp_core::capability::Manifest;
 use rusty_esp_iroh_core::esp_core::hal::Kv;
@@ -84,23 +84,25 @@ pub struct DeviceState {
     pub counters: Counters,
 }
 
-/// What the node has seen.
+/// What the node has seen. 32-bit on purpose: Xtensa has no 64-bit atomics
+/// (see `rusty_esp_core::time`), and four billion of anything is enough for a
+/// counter that is read every few seconds.
 #[derive(Debug, Default)]
 pub struct Counters {
     /// Echo connections served.
-    pub echo: AtomicU64,
+    pub echo: AtomicU32,
     /// RPC requests answered (any outcome).
-    pub rpc: AtomicU64,
+    pub rpc: AtomicU32,
     /// RPC requests refused (`Unauthorized` or `Denied`).
-    pub rpc_refused: AtomicU64,
+    pub rpc_refused: AtomicU32,
     /// Sidecar requests answered.
-    pub sidecar: AtomicU64,
+    pub sidecar: AtomicU32,
     /// Media subscribers served.
-    pub media_subscribers: AtomicU64,
+    pub media_subscribers: AtomicU32,
     /// Media packets sent.
-    pub media_packets: AtomicU64,
+    pub media_packets: AtomicU32,
     /// Media packets that could not be sent.
-    pub media_send_errors: AtomicU64,
+    pub media_send_errors: AtomicU32,
 }
 
 impl DeviceState {
@@ -244,16 +246,12 @@ impl Node {
             _ => None,
         };
 
-        let relay_mode = if config.relay {
-            RelayMode::Default
-        } else {
-            RelayMode::Disabled
-        };
-        let endpoint = Endpoint::builder(presets::Empty)
+        let builder = Endpoint::builder(presets::Empty)
             .crypto_provider(Arc::new(crate::crypto::provider()))
             .secret_key(identity.endpoint.clone())
-            .relay_mode(relay_mode)
-            .alpns(alpn::ALL.iter().map(|a| a.to_vec()).collect())
+            .alpns(alpn::ALL.iter().map(|a| a.to_vec()).collect());
+        let builder = crate::configure_reach(builder, config.relay)?;
+        let endpoint = builder
             .bind()
             .await
             .map_err(|e| HostError::Bind(format!("{e:?}")))?;

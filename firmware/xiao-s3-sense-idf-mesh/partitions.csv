@@ -1,0 +1,8 @@
+# XIAO ESP32-S3 Sense, 8 MB flash. An iroh node is ~4 MB, so the stock
+# "single app, large" table (1.5 MiB factory) cannot hold it; this one gives the
+# app 6 MiB and keeps the rest for NVS (the device key lives there) and PHY.
+# Flash with: espflash flash --partition-table partitions.csv --monitor
+# Name,   Type, SubType, Offset,  Size,     Flags
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 0x600000,

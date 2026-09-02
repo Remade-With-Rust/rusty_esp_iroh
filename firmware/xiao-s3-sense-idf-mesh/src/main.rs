@@ -25,11 +25,26 @@ use esp_idf_svc::sys::link_patches;
 use esp_idf_svc::wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWifi};
 use rusty_esp_core::capability::{Capability, Chip, Declared, Manifest};
 use rusty_esp_iroh_core::media::{PacketHeader, Subscribe, FLAG_KEY};
-use rusty_esp_iroh_esp::idf::{advertise_sidecar, register_eventfd, sync_time, EspNvsKv, EspRng, Protection};
+use rusty_esp_iroh_esp::idf::{register_eventfd, sync_time, EspNvsKv, EspRng, Protection, MDNS_COMPILED_IN};
 use rusty_esp_iroh_host::{MediaSource, Node, NodeConfig, NodeIdentity};
 
 const SSID: &str = env!("JANUS_WIFI_SSID");
 const PASS: &str = env!("JANUS_WIFI_PASS");
+
+/// ESP-IDF has no `gethostname`, but hickory-resolver's `resolv_conf` (still
+/// linked by iroh-dns even though the std DNS shim replaces it at runtime)
+/// references it. The same one-line shim n0's `iroh-esp32-examples` carry:
+/// report an empty hostname.
+///
+/// SAFETY: writes one NUL byte into `name` only when the caller passed a
+/// non-null buffer of at least one byte, which is the C contract of the call.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn gethostname(name: *mut core::ffi::c_char, len: usize) -> core::ffi::c_int {
+    if len > 0 && !name.is_null() {
+        unsafe { *name = 0 };
+    }
+    0
+}
 
 /// A stand-in media source until the camera pipeline (J1) is wired in:
 /// 900-byte test packets at 10 per second.
@@ -127,7 +142,11 @@ fn main() -> Result<()> {
         node.refresh_ticket(&[ip]);
         log::info!("janus j3: port = {}", node.port());
         log::info!("janus j3: TICKET {}", node.ticket_text());
-        let _mdns = advertise_sidecar(&node, "janus-xiao", &[ip]).context("mdns")?;
+        #[cfg(any(esp_idf_comp_mdns_enabled, esp_idf_comp_espressif__mdns_enabled))]
+        let _mdns = rusty_esp_iroh_esp::idf::advertise_sidecar(&node, "janus-xiao", &[ip]).context("mdns")?;
+        if !MDNS_COMPILED_IN {
+            log::warn!("janus j3: mdns component not compiled in — reachable by ticket only (mission plan §8, wall 5)");
+        }
 
         loop {
             tokio::time::sleep(Duration::from_secs(10)).await;

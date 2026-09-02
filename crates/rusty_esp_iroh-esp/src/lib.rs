@@ -43,14 +43,28 @@ pub const TRACK: Track = if cfg!(feature = "esp-idf") {
 pub mod idf {
     //! Track A glue over esp-idf-svc 0.52.
 
+    #[cfg(any(esp_idf_comp_mdns_enabled, esp_idf_comp_espressif__mdns_enabled))]
     use std::net::IpAddr;
     use std::time::Duration;
 
+    #[cfg(any(esp_idf_comp_mdns_enabled, esp_idf_comp_espressif__mdns_enabled))]
     use esp_idf_svc::mdns::EspMdns;
     use esp_idf_svc::sntp::{EspSntp, SyncStatus};
     use esp_idf_svc::sys::EspError;
+    #[cfg(any(esp_idf_comp_mdns_enabled, esp_idf_comp_espressif__mdns_enabled))]
     use rusty_esp_iroh_core::sidecar::SERVICE_TYPE;
+    #[cfg(any(esp_idf_comp_mdns_enabled, esp_idf_comp_espressif__mdns_enabled))]
     use rusty_esp_iroh_host::Node;
+
+    /// Whether the `espressif/mdns` IDF component was compiled into this
+    /// firmware (it arrives through `[package.metadata.esp-idf-sys]`, which
+    /// esp-idf-sys only reads when its `cargo metadata --locked` succeeds —
+    /// mission plan §8). Without it `advertise_sidecar` does not exist and
+    /// the device is reachable by ticket only.
+    pub const MDNS_COMPILED_IN: bool = cfg!(any(
+        esp_idf_comp_mdns_enabled,
+        esp_idf_comp_espressif__mdns_enabled
+    ));
 
     pub use rusty_esp_mid_esp::idf::{EspNvsKv, EspRng, Protection};
 
@@ -58,7 +72,7 @@ pub mod idf {
     /// before building the runtime; `max_fds` of 5 is what n0 uses.
     pub fn register_eventfd(max_fds: usize) -> Result<(), EspError> {
         let config = esp_idf_svc::sys::esp_vfs_eventfd_config_t {
-            max_fds: max_fds as u32,
+            max_fds,
             ..Default::default()
         };
         // SAFETY: `config` is a fully initialised POD struct that outlives the
@@ -88,6 +102,7 @@ pub mod idf {
     /// the home computer's pair client lists the device. The service port is
     /// the iroh UDP port (the record's `iroh_direct` carries the same); the
     /// instance name is the model. Keep the returned handle alive.
+    #[cfg(any(esp_idf_comp_mdns_enabled, esp_idf_comp_espressif__mdns_enabled))]
     pub fn advertise_sidecar(
         node: &Node,
         hostname: &str,

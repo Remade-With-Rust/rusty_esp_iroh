@@ -25,8 +25,8 @@ ticket, the DID↔endpoint `Binding`, postcard RPC with mID assertions, media
 framing, the home computer's OEM-sidecar JSON), and a `Node` + `Client` over
 iroh 1.1 with pure-Rust TLS prove them end to end on one machine: an RPC
 without an assertion is refused, a stranger is denied, the owner adopts, media
-streams with zero loss. The XIAO ESP32-S3 Sense firmware is written; nothing
-has run on a chip yet. `docs/LEDGER.md` has every number.
+streams with zero loss. The XIAO ESP32-S3 Sense firmware builds (4.66 MB
+image, 2026-09-02); nothing has run on a chip yet. `docs/LEDGER.md` has every number.
 
 ## What is in it
 

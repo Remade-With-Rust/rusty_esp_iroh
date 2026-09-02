@@ -20,11 +20,35 @@ pub mod crypto;
 pub mod error;
 pub mod identity;
 pub mod node;
+#[cfg(feature = "relay")]
+pub mod relay;
 
 pub use client::Client;
 pub use error::HostError;
 pub use identity::NodeIdentity;
 pub use node::{MediaSource, Node, NodeConfig};
+
+/// Apply the reach tier to an endpoint builder: LAN-direct (relay disabled)
+/// or, with the `relay` feature, n0's relays + pkarr through [`relay::apply`].
+/// Asking for relay without the feature is an error, not a silent downgrade.
+pub fn configure_reach(
+    builder: iroh::endpoint::Builder,
+    relay: bool,
+) -> error::Result<iroh::endpoint::Builder> {
+    if !relay {
+        return Ok(builder.relay_mode(iroh::RelayMode::Disabled));
+    }
+    #[cfg(feature = "relay")]
+    {
+        Ok(relay::apply(builder))
+    }
+    #[cfg(not(feature = "relay"))]
+    {
+        Err(HostError::Bind(String::from(
+            "relay requested but rusty_esp_iroh-host was built without the `relay` feature",
+        )))
+    }
+}
 
 /// Unix seconds now, when the clock looks set (after Sept 2020); `None`
 /// before SNTP on a chip, which the assertion and adoption checks accept.
