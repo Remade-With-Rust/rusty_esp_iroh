@@ -1,0 +1,47 @@
+[package]
+name = "rusty_esp_iroh-host"
+description = "The std half of rusty_esp_iroh: a Janus node (echo, rpc, media, sidecar handlers on an iroh 1.x endpoint) and the client that dials it by ticket or DID. The same code runs on a laptop, a Pi and — as Track A — on ESP-IDF; pure-Rust TLS (rustls-rustcrypto), never ring."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version = "1.91"
+readme = "README.md"
+documentation = "https://docs.rs/rusty_esp_iroh-host"
+keywords = ["esp32", "iroh", "mesh", "mata", "remade-with-rust"]
+categories = ["network-programming", "embedded"]
+
+[features]
+default = []
+# Relay + pkarr discovery through n0's public infrastructure (the PSRAM tier
+# and hosts). Off = LAN-direct only, the way a no-PSRAM chip runs.
+relay = []
+
+[dependencies]
+rusty_esp_iroh-core = { workspace = true, features = ["std"] }
+rusty_esp_core = { workspace = true, features = ["std"] }
+rusty_esp_mid-core = { workspace = true, features = ["std"] }
+
+iroh = { version = "1.1", default-features = false }
+iroh-tickets = "1.0"
+tokio = { version = "1", features = ["rt", "macros", "sync", "time", "io-util"] }
+bytes = "1"
+serde_json = { workspace = true, features = ["std"] }
+log = "0.4"
+rand = "0.9"
+
+# Pure-Rust TLS for QUIC, the configuration n0 proved on ESP32: rustls with
+# the rustls-rustcrypto provider (AES-128-GCM + X25519), so no ring and no
+# aws-lc anywhere in the graph.
+rustls = { version = "0.23", default-features = false }
+rustls-rustcrypto = { git = "https://github.com/n0-computer/rustls-rustcrypto", branch = "feature-flag-algorithms-v0.0.2", default-features = false, features = ["std", "p256"] }
+aes = "0.8"
+aes-gcm = "0.10"
+
+[dev-dependencies]
+env_logger = "0.11"
+
+[lints]
+workspace = true

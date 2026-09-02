@@ -19,8 +19,29 @@ plan. "Scaffold" means scaffold.
 
 ## Status
 
-**M0 — scaffold.** Crate layout, feature ladder and CI gates exist. Nothing here
-runs on a chip yet. The first milestone with a kill test is listed in the plan.
+**N0 shipped on the host (2026-09-01); N1 and N4 host halves done.** The
+Janus protocols are defined and tested in `no_std` (ALPNs, the `janus1…` QR
+ticket, the DID↔endpoint `Binding`, postcard RPC with mID assertions, media
+framing, the home computer's OEM-sidecar JSON), and a `Node` + `Client` over
+iroh 1.1 with pure-Rust TLS prove them end to end on one machine: an RPC
+without an assertion is refused, a stranger is denied, the owner adopts, media
+streams with zero loss. The XIAO ESP32-S3 Sense firmware is written; nothing
+has run on a chip yet. `docs/LEDGER.md` has every number.
+
+## What is in it
+
+| crate / module | what |
+|---|---|
+| `-core` `alpn` | `janus/echo/1`, `janus/rpc/1`, `janus/media/1`, `mata-oem-sidecar/rpc/1` |
+| `-core` `ticket` | the rendezvous ticket: endpoint id + DID + relay + addresses, `janus1…` base32 text for QR and serial, no heap |
+| `-core` `binding` | the device key's signature over its iroh `EndpointId` |
+| `-core` `assertion` | the caller's mID assertion (kms nonce-envelope shape) with replay window |
+| `-core` `rpc` | append-only `Request`/`Response`, length-prefixed postcard frames, the authorisation rule |
+| `-core` `media` | subscribe message, 24-byte packet header, loss counter |
+| `-core` `sidecar` | the home computer's existing JSON RPC and mDNS TXT record, answered by a device |
+| `-host` | `Node` (all four ALPNs), `Client`, `NodeIdentity` (both keys from the `Kv` seam), n0's QUIC crypto provider; `examples/{node,client}` |
+| `-esp` (`esp-idf`) | eventfd, SNTP, mDNS advertisement, NVS identity — the chip's glue around the std node |
+| `firmware/xiao-s3-sense-idf-mesh` | the J3 firmware |
 
 ## What it is
 

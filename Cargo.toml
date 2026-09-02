@@ -27,11 +27,18 @@ undocumented_unsafe_blocks = "deny"
 # in lockstep (the rusty_time pattern).
 rusty_esp_iroh-core = { path = "crates/rusty_esp_iroh-core", version = "0.1.0", default-features = false }
 rusty_esp_iroh-esp = { path = "crates/rusty_esp_iroh-esp", version = "0.1.0", default-features = false }
+rusty_esp_iroh-host = { path = "crates/rusty_esp_iroh-host", version = "0.1.0", default-features = false }
 
 # Siblings in the Janus family are consumed BY GIT URL so this repo deploys on
 # its own. Inside the Janus umbrella folder, `.cargo/config.toml` patches the
 # URL to the sibling checkout, so local edits are visible without a push.
 rusty_esp_core = { git = "https://github.com/Remade-With-Rust/rusty_esp_core", default-features = false }
+rusty_esp_mid-core = { git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false }
+
+# Wire serialization for the janus/* ALPNs (Layer 1 may use serde; Layer 0 stays serde-free).
+serde = { version = "1", default-features = false, features = ["derive"] }
+postcard = { version = "1.1", default-features = false }
+serde_json = { version = "1", default-features = false }
 
 [profile.release]
 lto = "thin"

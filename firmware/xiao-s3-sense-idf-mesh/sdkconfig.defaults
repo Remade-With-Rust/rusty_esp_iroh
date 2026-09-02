@@ -1,0 +1,47 @@
+# XIAO ESP32-S3 Sense: 8 MB flash, 8 MB octal PSRAM. iroh (rustls + tokio +
+# QUIC) needs the PSRAM tier; the numbers below are n0's server-esp32-s3-psram
+# configuration with Janus additions marked.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Tokio's current_thread runtime runs everything on the main task's stack.
+# n0 measured hickory's DNS at ~111 KB; the std resolver needs far less, but
+# the S3 has room and this is headroom (internal SRAM, not PSRAM).
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=114688
+CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
+
+# rustls, not mbedtls.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=n
+CONFIG_MBEDTLS_TLS_ENABLED=n
+
+# PSRAM: octal on the Sense; malloc from PSRAM by default, stacks allowed there.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=0
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0
+CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y
+
+# Wi-Fi: static TX buffers avoid dynamic internal-SRAM allocation.
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER=y
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=8
+
+# lwIP: room for concurrent QUIC probes.
+CONFIG_LWIP_UDP_RECVMBOX_SIZE=32
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=8192
+CONFIG_LWIP_TCP_WND_DEFAULT=8192
+CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=32
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
+CONFIG_LWIP_MAX_UDP_PCBS=16
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# Janus: 1 ms tick, a long watchdog while the QUIC handshake runs, mDNS.
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+CONFIG_MDNS_MAX_SERVICES=4
+
+# Stack overflow → hardware watchpoint.
+CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y

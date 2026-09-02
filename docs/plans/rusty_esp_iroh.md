@@ -10,7 +10,9 @@ Family plan: Janus `docs/plans/janus-mission.md` (§3.6 and §4). Layer 1 ·
 connectivity. Depends on `rusty_esp_core` and `rusty_esp_mid` (the endpoint
 key is bound to the device DID).
 
-Written 2026-09-01. Status: **scaffold.**
+Written 2026-09-01. Status: **N0 shipped on the host; N1 and N4 host halves
+done (node + client, the sidecar contract, the JanusFleet proposal in
+mata-master); the board is next.** Numbers in `docs/LEDGER.md`.
 
 ---
 
@@ -96,11 +98,11 @@ this crate plus MQTT ingest.
 
 | # | Deliverable | Kill test |
 |---|---|---|
-| **N0** | `-core` protocol types with round-trip tests; `-host` client; two host processes over iroh LAN-direct: echo, rpc, a synthetic media stream | 10 minutes of `janus/media/1` between two laptops with the loss counter recorded; an rpc call without an assertion is refused |
-| **N1** (J3) | `-esp` on XIAO S3 Sense (PSRAM tier): n0's configuration reproduced with the Janus ALPNs; endpoint key in NVS bound to the mID DID | short-ticket dial from another network through a relay; echo RTT recorded; `EndpointId` stable across reflash |
+| **N0** ✅ host 2026-09-01 | `-core`: ALPNs, `janus1…` ticket (QR text, no heap), `Binding` (device key over `EndpointId`), the kms-shaped caller `Assertion`, postcard `janus/rpc/1` with the authorisation rule, `janus/media/1` framing + loss counter, the `mata-oem-sidecar/rpc/1` JSON + TXT contract — 18 tests, riscv32 both rungs. `-host`: `Node` (four ALPNs on iroh 1.1, pure-Rust TLS) + `Client`; `examples/{node,client}`; loopback test | **passed on one machine:** rpc without an assertion → `Unauthorized`, stranger → `Denied`, owner adopts (320 B), rotation backwards refused; media 400/400 datagrams and 100/100 uni-streams, 0 lost; echo min 19.9 ms per fresh connection. **Two laptops for ten minutes: not yet run** (`docs/LEDGER.md`) |
+| **N1** (J3) ◐ host half 2026-09-01 | `-esp` on XIAO S3 Sense (PSRAM tier): n0's configuration reproduced with the Janus ALPNs; endpoint key in NVS bound to the mID DID. **Written:** `idf::{register_eventfd, sync_time, advertise_sidecar}`, `NodeIdentity` from NVS via `rusty_esp_mid-esp`, `firmware/xiao-s3-sense-idf-mesh` (LAN-direct; relay config is the next step) | short-ticket dial from another network through a relay; echo RTT recorded; `EndpointId` stable across reflash — **needs the board** |
 | **N2** | `janus/media/1` carrying J1's MJPEG; `-host` writes frames to disk | FPS at the receiver vs at the source recorded; a second subscriber does not stall the first |
 | **N3** | `-bridge` on a Pi fronting a C6 (ESP-NOW) and a LoRa node | the C6, which cannot run iroh, appears in the home computer's app through the Pi; its manifest is the C6's own signed manifest |
-| **N4** | the home-computer joint: `mata-oem-sidecar/rpc/1` answered; `DeviceAttachment` stored; `JanusFleet` `HostAdapter` on the home computer | the device shows under its own DID in the app after QR adoption; removing it from the roster ends its session within one reconnect |
+| **N4** ◐ host half 2026-09-01 | the home-computer joint: `mata-oem-sidecar/rpc/1` answered (`sidecar::handle`, the pair client's TXT fields); `DeviceAttachment` stored; `JanusFleet` `HostAdapter` on the home computer — **proposed in `mata-master` branch `janus-fleet-proposal`**: `ResourceClass::MediaCapture` + `ResourceType::Media` + a rate-card row, and `packages/janus-fleet` with the adapter, tests green | the device shows under its own DID in the app after QR adoption; removing it from the roster ends its session within one reconnect — **needs the board and the daemon glue** |
 | **N5** | OTA over iroh: image signed by the vendor key, verified against the manifest's `Ota` capability, `esp-ota` two-slot rollback | a bad signature never boots; a good one boots and reports its new `fw=` line |
 | **N6** | C6 LAN-direct tier with the reduced-dependency branch; size ledger | binary size, heap high-water and stack use recorded per tier |
 
@@ -130,3 +132,7 @@ this crate plus MQTT ingest.
 | 2026-09-01 | Five crates in this package (facade, core, esp, host, bridge) — the documented exception to the three-crate shape. |
 | 2026-09-01 | Speak `mata-oem-sidecar/rpc/1` and advertise the sidecar mDNS service for day-one visibility; `janus/*` ALPNs for everything new. |
 | 2026-09-01 | The endpoint key is a separate ed25519 key (iroh's requirement) bound to the P-256 device DID by a signed `Binding`; the family itself introduces no ed25519 identity. |
+| 2026-09-01 | **Plain postcard frames, not `irpc`, for `janus/rpc/1`**: a `u32` length prefix and one request/response per bi-stream keeps `-core` `no_std` and the wire trivially inspectable; the append-only enum rule is what irpc would have given us. irpc can wrap it later without changing bytes. |
+| 2026-09-01 | The caller assertion is the kms nonce-envelope canonical form with fixed `purpose`/`issuer`, so the home computer signs RPCs with the same code that signs gateway assertions. The device pins the owner's genesis DID; roster-chain verification stays upstream (mid M5). |
+| 2026-09-01 | `-host` is the Track A implementation too: the node is std and runs on ESP-IDF unchanged; `-esp` holds only eventfd, SNTP, mDNS and the NVS identity. Pure-Rust TLS everywhere (rustls-rustcrypto, n0's provider vendored) — no `ring` on the host either. |
+| 2026-09-01 | `MediaCapture` is priced per **stream-second**; bit-rate is an attribute. Proposed to `mata-master` on a branch, not merged: metering (`UsageAmount`) is the next lockstep step. |

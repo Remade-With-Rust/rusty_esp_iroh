@@ -1,31 +1,33 @@
 [package]
 name = "rusty_esp_iroh-esp"
-description = "Chip backends for rusty_esp_iroh: the WRAP crate. `esp-hal` (Track B, no_std + Embassy) or `esp-idf` (Track A, std on ESP-IDF). The only crate in the workspace allowed a fenced unsafe block, and only at a DMA or FFI boundary."
+description = "Track A glue for rusty_esp_iroh on ESP-IDF: eventfd for tokio, SNTP before TLS, the mDNS sidecar advertisement, and the identity from NVS. The node and client themselves are rusty_esp_iroh-host, which is std and runs unchanged on the chip. `esp-hal` is a compile error by design: no_std reaches the mesh through the bridge."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-rust-version.workspace = true
+rust-version = "1.91"
 readme = "README.md"
 documentation = "https://docs.rs/rusty_esp_iroh-esp"
-keywords = ["esp32", "embedded", "esp-hal", "esp-idf", "remade-with-rust"]
-categories = ["embedded", "no-std", "hardware-support"]
+keywords = ["esp32", "embedded", "esp-idf", "iroh", "remade-with-rust"]
+categories = ["embedded", "network-programming"]
 
 [features]
 default = []
 std = ["rusty_esp_iroh-core/std"]
 alloc = ["rusty_esp_iroh-core/alloc"]
-# Track B — bare metal: esp-hal + Embassy. The esp-hal / esp-radio / esp-alloc
-# dependencies land behind this feature with the first driver, pinned to the
-# versions recorded in the plan.
+# Track A — std on ESP-IDF: the only track iroh runs on.
+esp-idf = ["std", "dep:esp-idf-svc", "dep:rusty_esp_iroh-host", "dep:rusty_esp_mid-esp"]
+# Track B is a compile error with a message: see lib.rs.
 esp-hal = ["alloc"]
-# Track A — std on ESP-IDF via esp-idf-svc. Same rule.
-esp-idf = ["std"]
 
 [dependencies]
 rusty_esp_iroh-core = { workspace = true }
+rusty_esp_iroh-host = { workspace = true, optional = true }
+rusty_esp_mid-esp = { git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false, features = ["esp-idf"], optional = true }
+esp-idf-svc = { version = "0.52", optional = true }
+log = "0.4"
 
 [lints]
 workspace = true

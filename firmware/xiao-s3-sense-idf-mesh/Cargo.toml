@@ -1,0 +1,69 @@
+# Janus J3 firmware — XIAO ESP32-S3 Sense (PSRAM tier), Track A:
+# mID device identity in NVS + an iroh endpoint answering the Janus ALPNs and
+# the home computer's OEM-sidecar RPC, advertised over mDNS.
+#
+# A separate cargo project on purpose (Xtensa target, ESP-IDF build, its own
+# toolchain). Build from this directory. See README.md.
+
+[package]
+name = "xiao-s3-sense-idf-mesh"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Janus J3: XIAO ESP32-S3 Sense as a Janus mesh node (mID + iroh, ESP-IDF track)."
+
+[[bin]]
+name = "xiao-s3-sense-idf-mesh"
+harness = false # no cargo test harness on the chip
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+debug = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+
+[features]
+default = ["std", "esp-idf-svc/native"]
+std = ["alloc", "esp-idf-svc/binstart", "esp-idf-svc/std"]
+alloc = ["esp-idf-svc/alloc"]
+
+[dependencies]
+log = "0.4"
+anyhow = "1"
+esp-idf-svc = { version = "0.52", default-features = false }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+
+# Janus crates. Siblings by git URL (the umbrella's .cargo/config.toml patches
+# them to local checkouts); this repo's own crates by path.
+rusty_esp_core = { git = "https://github.com/Remade-With-Rust/rusty_esp_core", default-features = false, features = ["std"] }
+rusty_esp_mid-core = { git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false, features = ["std"] }
+# `allow-insecure-dev`: the XIAO on the bench has neither flash encryption nor
+# NVS encryption yet; the ledger says so. A shipping build drops this feature.
+rusty_esp_mid-esp = { git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false, features = ["esp-idf", "allow-insecure-dev"] }
+rusty_esp_iroh-core = { path = "../../crates/rusty_esp_iroh-core", default-features = false, features = ["std"] }
+rusty_esp_iroh-host = { path = "../../crates/rusty_esp_iroh-host", default-features = false }
+rusty_esp_iroh-esp = { path = "../../crates/rusty_esp_iroh-esp", default-features = false, features = ["esp-idf"] }
+
+[build-dependencies]
+embuild = "0.33"
+
+[package.metadata.esp-idf-sys]
+esp_idf_version = "v5.5.1"
+esp_idf_tools_install_dir = "global"
+
+# mDNS is an IDF managed component since v5; esp-idf-svc's `mdns` module
+# appears when it is present.
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mdns", version = "1.8" }
+
+# A standalone cargo project: not a member of the rusty_esp_iroh workspace
+# (cargo needs this table, a glob in workspace.exclude does not match).
+[workspace]
