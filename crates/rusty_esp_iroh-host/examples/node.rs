@@ -61,7 +61,38 @@ async fn main() {
         chip: Chip::Esp32S3,
         declared: &declared,
     };
-    let media = Arc::new(|sub: &Subscribe| -> Box<dyn MediaSource> {
+    // JANUS_MJPEG_DIR=<dir of .jpg>  -> DirSource at JANUS_FPS (default 10)
+    // JANUS_MJPEG_URL=host:port[/path] -> HttpMjpegSource (feature `mjpeg`)
+    // neither                          -> the 900-byte synthetic pattern
+    let mjpeg_dir = std::env::var("JANUS_MJPEG_DIR").ok();
+    let mjpeg_url = std::env::var("JANUS_MJPEG_URL").ok();
+    let dir_fps: u32 = std::env::var("JANUS_FPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    let media = Arc::new(move |sub: &Subscribe| -> Box<dyn MediaSource> {
+        if let Some(dir) = &mjpeg_dir {
+            let fps = if sub.max_fps == 0 { dir_fps } else { u32::from(sub.max_fps).min(dir_fps) };
+            return Box::new(
+                rusty_esp_iroh_host::mjpeg::DirSource::open(std::path::Path::new(dir), fps)
+                    .expect("JANUS_MJPEG_DIR holds JPEGs"),
+            );
+        }
+        if let Some(url) = &mjpeg_url {
+            #[cfg(feature = "mjpeg")]
+            {
+                let (addr, path) = match url.find('/') {
+                    Some(i) => (&url[..i], &url[i..]),
+                    None => (url.as_str(), "/stream"),
+                };
+                return Box::new(
+                    rusty_esp_iroh_host::mjpeg::HttpMjpegSource::connect(addr, path, 512 * 1024)
+                        .expect("JANUS_MJPEG_URL answers"),
+                );
+            }
+            #[cfg(not(feature = "mjpeg"))]
+            panic!("JANUS_MJPEG_URL={url} needs --features mjpeg");
+        }
         let fps = if sub.max_fps == 0 { 10 } else { sub.max_fps };
         Box::new(Synthetic {
             seq: 0,

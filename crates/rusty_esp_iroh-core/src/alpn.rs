@@ -26,6 +26,11 @@ pub const MAX_SIDECAR_BYTES: usize = 64 * 1024;
 /// uni-stream.
 pub const MAX_MEDIA_DATAGRAM: usize = 1200;
 
+/// Largest media packet that travels as one uni stream when it does not fit
+/// a datagram: a VGA JPEG is tens of kilobytes and a 720p one can pass a
+/// hundred; 256 KiB leaves room without letting a peer ask for the heap.
+pub const MAX_MEDIA_PACKET: usize = 256 * 1024;
+
 #[cfg(test)]
 mod tests {
     use super::*;

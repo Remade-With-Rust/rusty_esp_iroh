@@ -523,10 +523,33 @@ impl ProtocolHandler for Media {
 
         let mut source = factory(&sub);
         let interval = source.interval();
+        // The source may block (a camera, an HTTP pull, a paced file): it
+        // gets a thread of its own and a short channel, so one slow
+        // subscriber's source never holds the executor — and with it every
+        // other subscriber — hostage. Dropping the receiver ends the thread
+        // after its next packet.
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(PacketHeader, Vec<u8>)>(4);
+        tokio::task::spawn_blocking(move || {
+            while let Some(pkt) = source.next_packet() {
+                if tx.blocking_send(pkt).is_err() {
+                    break;
+                }
+                if !interval.is_zero() {
+                    std::thread::sleep(interval);
+                }
+            }
+        });
         let closed = connection.closed();
         tokio::pin!(closed);
         let mut buf = Vec::new();
-        while let Some((header, payload)) = source.next_packet() {
+        loop {
+            let (header, payload) = tokio::select! {
+                _ = &mut closed => break,
+                next = rx.recv() => match next {
+                    Some(pkt) => pkt,
+                    None => break,
+                },
+            };
             buf.clear();
             buf.resize(HEADER_LEN, 0);
             header
@@ -554,11 +577,8 @@ impl ProtocolHandler for Media {
                     .media_send_errors
                     .fetch_add(1, Ordering::Relaxed);
             }
-            tokio::select! {
-                _ = &mut closed => break,
-                () = tokio::time::sleep(interval) => {}
-            }
         }
+        drop(rx);
         Ok(())
     }
 }

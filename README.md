@@ -28,6 +28,15 @@ without an assertion is refused, a stranger is denied, the owner adopts, media
 streams with zero loss. The XIAO ESP32-S3 Sense firmware builds (4.66 MB
 image, 2026-09-02); nothing has run on a chip yet. `docs/LEDGER.md` has every number.
 
+**N2 host half (2026-09-02):** real MJPEG over `janus/media/1` — a directory
+source and, behind the `mjpeg` feature, J1's HTTP stream republished by the
+node (the Pi-in-front-of-a-camera bridge); every subscriber's source on its
+own thread; the client writes frames to disk. One subscriber for a minute:
+591 frames written, every one byte-identical to its source
+file, 0 lost; two subscribers at once: 0 and
+0 lost; the HTTP bridge at 16.06 fps against the
+server's 16.05.
+
 ## What is in it
 
 | crate / module | what |

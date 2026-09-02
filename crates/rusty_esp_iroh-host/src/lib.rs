@@ -19,6 +19,7 @@ pub mod client;
 pub mod crypto;
 pub mod error;
 pub mod identity;
+pub mod mjpeg;
 pub mod node;
 #[cfg(feature = "relay")]
 pub mod relay;

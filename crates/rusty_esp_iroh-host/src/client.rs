@@ -243,7 +243,7 @@ impl Client {
                 },
                 u = conn.accept_uni() => match u {
                     Ok(mut uni) => {
-                        if let Ok(bytes) = uni.read_to_end(alpn::MAX_RPC_FRAME).await {
+                        if let Ok(bytes) = uni.read_to_end(alpn::MAX_MEDIA_PACKET).await {
                             handle(&bytes, &mut counter);
                         }
                     }

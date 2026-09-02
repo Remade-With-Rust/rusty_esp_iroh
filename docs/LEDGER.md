@@ -132,6 +132,69 @@ accounting and the subscription lifetime over ten real minutes on a real
 interface address. The two-laptop row stays in
 `docs/plans/hardware-verify.md`.
 
+## N2 host half - real MJPEG over `janus/media/1` (2026-09-02)
+
+Two media sources that carry JPEG frames (`rusty_esp_iroh-host::mjpeg`):
+`DirSource` (every `.jpg` in a directory, looped at a rate) and, behind the
+`mjpeg` feature, `HttpMjpegSource` (J1's `multipart/x-mixed-replace` stream
+pulled over TCP through `rusty_esp_video`'s reader and republished frame by
+frame: the node as the bridge a Pi is in front of a camera). The node now
+runs every subscriber's source on a blocking thread with a short channel,
+so a source that blocks cannot hold the executor, and a frame larger than a
+datagram travels as one uni stream up to `alpn::MAX_MEDIA_PACKET` (256 KiB).
+The `client` example writes `mjpg` packets to a directory and reports the
+receiver's frame rate against the source's timestamps.
+
+All three runs below are node and client(s) as separate processes on this
+machine, the node advertising only the Wi-Fi adapter's address
+(192.168.0.224). The source for the first two is 50 JPEGs of
+ffmpeg's `testsrc` at 320x240 (432 791 bytes), looped at 10 fps.
+
+### One subscriber, frames to disk, 60 s
+
+| measure | value |
+|---|---|
+| packets received · lost · reordered | **591 · 0 · 0** |
+| frames written | **591** |
+| receiver fps · source fps (from packet timestamps) | **9.85 · 10.00** |
+| bytes · largest frame | 5 116 804 · 8 972 B |
+| node: subscribers · packets at its last report · send errors | 1 · 569 · 0 |
+
+Byte identity, in a second 20 s run of the same source: every one of
+the **198** frames written equals the source file it came from
+(frame `k` against file `k mod 50`, `cmp`), **0 different**.
+
+### Two subscribers at once, 60 s
+
+The second client starts two seconds after the first.
+
+| | client A | client B |
+|---|---|---|
+| packets received · lost · reordered | 593 · 0 · 0 | 596 · 0 · 0 |
+| receiver fps · source fps | 9.88 · 10.00 | 9.93 · 10.00 |
+| frames received · written to disk | 593 · 479 | 596 · 459 |
+
+Node: 2 subscribers, 1 150 packets at its last report,
+0 send errors. The first subscriber's rate did not move when the
+second joined. The frames received are complete on both; the shortfall in
+"written" is `std::fs::write` failing on this Windows host with two
+processes each creating ten files a second into their own directories, not
+the transport (one writer alone wrote every frame, above).
+
+### The HTTP bridge: `mjpeg_server` → node → client, 30 s
+
+`rusty_esp_video-esp`'s `mjpeg_server` example (colour bars, 320x240, 15
+fps, `rusty_jpeg` quality 80) on `127.0.0.1:8090`, pulled by the node with
+`JANUS_MJPEG_URL` (feature `mjpeg`) and republished.
+
+| measure | value |
+|---|---|
+| packets received · lost · reordered | **482 · 0 · 0** |
+| receiver fps · source fps (from the stream's `X-Timestamp`) | **16.06 · 16.05** |
+| frames written · largest | 482 · 6 015 B |
+| first and last written frame probe | mjpeg,320,240 / mjpeg,320,240 |
+| node: subscribers · packets · send errors | 1 · 482 · 0 |
+
 ## Not yet measured
 
 - **Anything on a chip**: the `xiao-s3-sense-idf-mesh` firmware builds
