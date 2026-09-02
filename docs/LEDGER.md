@@ -195,6 +195,54 @@ fps, `rusty_jpeg` quality 80) on `127.0.0.1:8090`, pulled by the node with
 | first and last written frame probe | mjpeg,320,240 / mjpeg,320,240 |
 | node: subscribers · packets · send errors | 1 · 482 · 0 |
 
+## N5 and N3 host halves (2026-09-02)
+
+### N5 — OTA over iroh
+
+`ota::OtaManifest` is what a maker signs: model, firmware string, chip tag,
+image length, SHA-256 and the maker's DID, length-prefixed under a domain
+separator, a low-s P-256 signature over the hash. The device checks, in
+this order and all before a byte: owner (the RPC rule), `ota` declared
+available in its own manifest, a trusted maker configured, that maker,
+this chip, this model, the size, the signature under the maker's key (the
+DID carries it). Then `OtaReady`, the bytes into the inactive slot through
+the `OtaSink` seam with SHA-256 running, the length and digest against the
+manifest, and only then the slot becomes the boot slot. `MemorySlots` is
+the host's two-slot model with `esp-ota`'s rule: a new image that is not
+marked valid before the next boot rolls back.
+
+| Gate (host, loopback) | Result |
+|---|---|
+| Every lie named: no maker → `NoMaker`, another maker → `WrongMaker`, other chip / model, a forged firmware string or a flipped signature byte → `BadSignature`, an over-size manifest → `TooLarge` | pass |
+| A session streams 40 000 bytes in chunks, verifies, commits; the running image is untouched until `boot()`; an unvalidated boot rolls back, a validated one stays | pass |
+| Tampered bytes → `DigestMismatch`; short → `LengthMismatch`; a byte too many → `LengthMismatch`; a power cut after 12 000 bytes → `SinkFailed`; in every case the running image byte-identical and nothing pending; the retry commits; a slot too small → `TooLarge` | pass |
+| Over the link: anonymous → `Unauthorized`, a stranger → `Denied`, `Ota` on `janus/rpc/1` → `Unsupported`; owner + bad signature / wrong maker / chip / model / tampered image / power cut at 70 000 of 200 000 bytes → each refused by name, slot unchanged; the good image → `Committed { firmware: "1.5.0" }`, `last_ota()` says so, boot reports `1.5.0`, rollback without validation, stays with it; counters 2 committed / 6 refused | pass |
+| No `ota` capability → `NoOtaCapability`; capability but no maker → `NoMaker`; nothing pending either way | pass |
+| C2 over the link: `Client::time` gives a known `WallOffset` with a finite, positive error bound | pass |
+
+`-esp::EspOtaSink` is the same seam over ESP-IDF's `esp_ota_begin` /
+`esp_ota_write` / `esp_ota_end` / `esp_ota_set_boot_partition`, with
+`mark_running_valid` for the freshly booted image; the mesh firmware
+declares `ota` and accepts images when `JANUS_MAKER_DID` names a maker at
+build time (see the firmware row below for its build state).
+
+### N3 — the bridge
+
+`rusty_esp_iroh-bridge`: one iroh endpoint fronting N radio neighbours
+over an in-memory bus on the host. A neighbour links with the signal
+session (its key stays on it), sends `sig ‖ manifest` in sealed parts, the
+bridge verifies under the neighbour's DID and lists it; telemetry is
+re-framed onto `janus/media/1` as `nbrt` packets carrying the DID.
+
+| Gate (host) | Result |
+|---|---|
+| A bus delivers addressed and broadcast frames, refuses over-MTU frames, drops on request | pass |
+| Two neighbours (a C6 on ESP-NOW, a LoRa node) and an impostor with a forged manifest signature all link; two manifests verify, one is refused; 8 telemetry frames accepted; a replayed sealed frame and a forged frame are dropped | pass |
+| `Request::Neighbours` lists exactly the two, each manifest verifying under the neighbour's own DID and parsing canonically, with the right reach tag and model, the impostor absent | pass |
+| A subscriber to `nbrt` receives 8 packets, 0 lost, 4 attributed to each neighbour's DID and reach | pass |
+
+Test totals after N3 + N5: 1 + 1 + 21 + 5 + 1 + 2 = **31** across the core, host and bridge suites.
+
 ## Not yet measured
 
 - **Anything on a chip**: the `xiao-s3-sense-idf-mesh` firmware builds
@@ -212,3 +260,8 @@ fps, `rusty_jpeg` quality 80) on `127.0.0.1:8090`, pulled by the node with
   on top of the LAN tier. Nothing has run it.
 - Two laptops for ten minutes (the one-machine run above is the substitute
   until there are two).
+- **N5 on a board:** the relay-on and OTA-declaring mesh firmware flashed,
+  a signed image pushed over Wi-Fi, the new `fw=` line on serial, and a
+  deliberately unvalidated image rolling back on the second reset.
+- **N3 on radios:** the `Radio` seam over a serial-attached C6 and an SX1262
+  on a Pi; everything above it is the host test.

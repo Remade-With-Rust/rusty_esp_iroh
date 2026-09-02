@@ -14,9 +14,10 @@ use std::time::{Duration, Instant};
 
 use rusty_esp_iroh_core::media::Subscribe;
 use rusty_esp_iroh_core::mid::key::DeviceKey;
-use rusty_esp_iroh_core::rpc::Request;
+use rusty_esp_iroh_core::rpc::{Request, Response};
 use rusty_esp_iroh_core::ticket::Ticket;
 use rusty_esp_iroh_host::Client;
+use rusty_esp_iroh_core::ota::OtaManifest;
 use rusty_esp_iroh_host::client::endpoint_addr;
 
 #[tokio::main(flavor = "current_thread")]
@@ -67,6 +68,64 @@ async fn main() {
             ] {
                 println!("{req} -> {:?}", client.sidecar(&addr, req).await);
             }
+        }
+        "neighbours" => {
+            match client
+                .rpc_anonymous(&addr, Request::Neighbours)
+                .await
+                .expect("neighbours")
+            {
+                Response::Neighbours(list) => {
+                    println!("{} neighbour(s)", list.len());
+                    for n in list {
+                        let ok = rusty_esp_iroh_core::mid::did::Did::parse(&n.did)
+                            .ok()
+                            .and_then(|d| {
+                                let sig: [u8; 64] = n.sig.as_slice().try_into().ok()?;
+                                rusty_esp_iroh_core::mid::manifest::verify_manifest(&n.manifest, &sig, d.pubkey()).ok()
+                            })
+                            .is_some();
+                        println!(
+                            "  {} via {} seen {} ms ago, manifest {} bytes, signature {}",
+                            n.did,
+                            n.reach,
+                            n.last_seen_us / 1000,
+                            n.manifest.len(),
+                            if ok { "verifies" } else { "DOES NOT VERIFY" }
+                        );
+                        if let Ok(text) = std::str::from_utf8(&n.manifest) {
+                            for line in text.lines() {
+                                println!("      {line}");
+                            }
+                        }
+                    }
+                }
+                other => println!("{other:?}"),
+            }
+        }
+        "time" => {
+            let w = client.time(&addr).await.expect("time");
+            println!(
+                "time: offset known={} error_us={:?} device_at={} -> wall {:?}",
+                w.is_known(),
+                w.error_us(),
+                w.measured_at(),
+                w.to_wall(w.measured_at())
+            );
+        }
+        "ota" => {
+            // client <ticket> ota <image> <manifest.jota>
+            let image_path = args.next().expect("image path");
+            let manifest_path = args.next().expect("manifest path (.jota)");
+            let image = std::fs::read(&image_path).expect("read image");
+            let manifest: OtaManifest =
+                serde_json::from_slice(&std::fs::read(&manifest_path).expect("read manifest"))
+                    .expect("parse manifest");
+            let outcome = client
+                .ota(&addr, &device_did, &manifest, &image)
+                .await
+                .expect("ota");
+            println!("ota: {outcome:?}");
         }
         "media" => {
             // client <ticket> media [secs] [out-dir]: with an out-dir every

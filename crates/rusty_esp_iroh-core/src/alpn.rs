@@ -11,9 +11,11 @@ pub const MEDIA: &[u8] = b"janus/media/1";
 
 /// The home computer's existing OEM sidecar JSON RPC (see [`crate::sidecar`]).
 pub const SIDECAR_RPC: &[u8] = b"mata-oem-sidecar/rpc/1";
+/// A maker-signed image manifest, then the image bytes (see [`crate::ota`]).
+pub const OTA: &[u8] = b"janus/ota/1";
 
 /// Every ALPN a Janus node accepts, in the order a router registers them.
-pub const ALL: [&[u8]; 4] = [ECHO, RPC, MEDIA, SIDECAR_RPC];
+pub const ALL: [&[u8]; 5] = [ECHO, RPC, MEDIA, SIDECAR_RPC, OTA];
 
 /// Largest `janus/rpc/1` frame (length prefix excluded). Adoption blobs and
 /// manifests are hundreds of bytes; 64 KiB matches the sidecar's request cap.

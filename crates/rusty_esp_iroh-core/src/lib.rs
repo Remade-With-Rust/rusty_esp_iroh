@@ -37,6 +37,8 @@ pub mod ticket;
 #[cfg(feature = "alloc")]
 pub mod media;
 #[cfg(feature = "alloc")]
+pub mod ota;
+#[cfg(feature = "alloc")]
 pub mod rpc;
 #[cfg(feature = "alloc")]
 pub mod sidecar;

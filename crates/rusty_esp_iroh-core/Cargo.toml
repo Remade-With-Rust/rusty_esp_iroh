@@ -34,6 +34,8 @@ alloc = [
 [dependencies]
 rusty_esp_core = { workspace = true }
 rusty_esp_mid-core = { workspace = true }
+# The OTA image digest; already in the graph under rusty_esp_mid-core.
+sha2 = { version = "0.10", default-features = false }
 serde = { workspace = true, optional = true }
 postcard = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

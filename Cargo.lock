@@ -3786,6 +3786,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusty_esp_iroh-bridge"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "postcard",
+ "rand 0.9.5",
+ "rusty_esp_core",
+ "rusty_esp_iroh-core",
+ "rusty_esp_iroh-host",
+ "rusty_esp_mid-core",
+ "rusty_esp_signal-core",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "rusty_esp_iroh-core"
 version = "0.1.0"
 dependencies = [
@@ -3794,6 +3811,7 @@ dependencies = [
  "rusty_esp_mid-core",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -3853,6 +3871,19 @@ dependencies = [
  "embuild",
  "esp-idf-svc",
  "rusty_esp_mid-core",
+]
+
+[[package]]
+name = "rusty_esp_signal-core"
+version = "0.1.0"
+dependencies = [
+ "hkdf",
+ "hmac",
+ "p256",
+ "rusty_esp_core",
+ "rusty_esp_mid-core",
+ "sha2 0.10.9",
+ "zeroize",
 ]
 
 [[package]]

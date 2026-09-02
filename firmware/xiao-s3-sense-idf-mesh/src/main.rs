@@ -25,8 +25,9 @@ use esp_idf_svc::sys::link_patches;
 use esp_idf_svc::wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWifi};
 use rusty_esp_core::capability::{Capability, Chip, Declared, Manifest};
 use rusty_esp_iroh_core::media::{PacketHeader, Subscribe, FLAG_KEY};
-use rusty_esp_iroh_esp::idf::{register_eventfd, sync_time, EspNvsKv, EspRng, Protection, MDNS_COMPILED_IN};
-use rusty_esp_iroh_host::{MediaSource, Node, NodeConfig, NodeIdentity};
+use rusty_esp_iroh_core::ota::OtaSink;
+use rusty_esp_iroh_esp::idf::{register_eventfd, sync_time, EspNvsKv, EspOtaSink, EspRng, Protection, MDNS_COMPILED_IN};
+use rusty_esp_iroh_host::{Extras, MediaSource, Node, NodeConfig, NodeIdentity};
 
 const SSID: &str = env!("JANUS_WIFI_SSID");
 const PASS: &str = env!("JANUS_WIFI_PASS");
@@ -118,12 +119,18 @@ fn main() -> Result<()> {
         .context("tokio")?;
 
     rt.block_on(async move {
-        let declared = [
+        // JANUS_MAKER_DID at build time names the maker whose signed images
+        // this device accepts over janus/ota/1; without it OTA is not declared.
+        let maker_did: Option<&'static str> = option_env!("JANUS_MAKER_DID");
+        let mut declared = vec![
             Declared::available(Capability::IrohLanDirect, "rusty_esp_iroh"),
             Declared::available(Capability::MidDevice, "rusty_esp_mid"),
             Declared::planned(Capability::IrohRelay),
             Declared::preview(Capability::VideoMjpeg, "rusty_esp_video"),
         ];
+        if maker_did.is_some() {
+            declared.push(Declared::available(Capability::Ota, "rusty_esp_iroh"));
+        }
         let manifest = Manifest {
             model: "janus/xiao-s3-sense",
             firmware: env!("CARGO_PKG_VERSION"),
@@ -136,9 +143,20 @@ fn main() -> Result<()> {
             model: String::from("janus/xiao-s3-sense"),
             firmware: format!("janus-mesh {}", env!("CARGO_PKG_VERSION")),
         };
-        let node = Node::bind(identity, Box::new(kv), &manifest, Some(media), config)
+        let extras = Extras {
+            maker_did: maker_did.map(String::from),
+            ota: maker_did.map(|_| Box::new(EspOtaSink::new()) as Box<dyn OtaSink + Send>),
+            neighbours: None,
+        };
+        let node = Node::bind_with(identity, Box::new(kv), &manifest, Some(media), config, extras)
             .await
             .map_err(|e| anyhow::anyhow!("bind: {e}"))?;
+        // The endpoint is up: this image is good. Without this the bootloader
+        // rolls back to the previous slot on the next reset.
+        match EspOtaSink::mark_running_valid() {
+            Ok(()) => log::info!("janus j3: running image marked valid (fw {})", env!("CARGO_PKG_VERSION")),
+            Err(e) => log::warn!("janus j3: mark_running_valid: {e} (no rollback pending, or rollback disabled)"),
+        }
         node.refresh_ticket(&[ip]);
         log::info!("janus j3: port = {}", node.port());
         log::info!("janus j3: TICKET {}", node.ticket_text());

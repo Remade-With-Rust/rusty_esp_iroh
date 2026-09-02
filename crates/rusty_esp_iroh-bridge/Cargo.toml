@@ -1,0 +1,38 @@
+[package]
+name = "rusty_esp_iroh-bridge"
+description = "The Janus bridge (N3): a std process that holds one iroh endpoint and fronts N radio neighbours — a C6 over ESP-NOW, a LoRa node — each linked by rusty_esp_signal's authenticated session, its own signed manifest relayed verbatim, its telemetry re-framed onto janus/media/1. The bridge never holds a neighbour's key."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/rusty_esp_iroh-bridge"
+keywords = ["esp32", "iroh", "bridge", "esp-now", "lora"]
+categories = ["embedded", "network-programming"]
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+rusty_esp_iroh-core = { workspace = true, features = ["std"] }
+rusty_esp_iroh-host = { workspace = true }
+rusty_esp_core = { workspace = true, features = ["std"] }
+rusty_esp_mid-core = { workspace = true, features = ["std"] }
+rusty_esp_signal-core = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+postcard = { workspace = true, features = ["use-std"] }
+rand = "0.9"
+log = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+env_logger = "0.11"
+
+[[example]]
+name = "bridge"
+
+[lints]
+workspace = true

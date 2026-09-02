@@ -15,7 +15,8 @@ use std::time::Duration;
 use rusty_esp_iroh_core::esp_core::capability::{Capability, Chip, Declared, Manifest};
 use rusty_esp_iroh_core::esp_core::hal::host::{InsecureTestRng, MemoryKv};
 use rusty_esp_iroh_core::media::{FLAG_KEY, PacketHeader, Subscribe};
-use rusty_esp_iroh_host::{MediaSource, Node, NodeConfig, NodeIdentity};
+use rusty_esp_iroh_core::ota::{MemorySlots, OtaSink};
+use rusty_esp_iroh_host::{Extras, MediaSource, Node, NodeConfig, NodeIdentity};
 
 struct Synthetic {
     seq: u32,
@@ -50,11 +51,18 @@ async fn main() {
     let mut kv = MemoryKv::new();
     let mut rng = InsecureTestRng::seeded(rand::random());
     let identity = NodeIdentity::load_or_create(&mut kv, &mut rng, "janus").expect("identity");
-    let declared = [
+    // JANUS_MAKER_DID=<did:mata:...>  -> OTA accepted from that maker into an
+    //                                    in-memory two-slot model (running
+    //                                    firmware JANUS_FIRMWARE, default 0.1.0)
+    let maker_did = std::env::var("JANUS_MAKER_DID").ok();
+    let mut declared = vec![
         Declared::available(Capability::IrohLanDirect, "rusty_esp_iroh"),
         Declared::available(Capability::MidDevice, "rusty_esp_mid"),
         Declared::preview(Capability::VideoMjpeg, "rusty_esp_video"),
     ];
+    if maker_did.is_some() {
+        declared.push(Declared::available(Capability::Ota, "rusty_esp_iroh"));
+    }
     let manifest = Manifest {
         model: "janus/host-node",
         firmware: env!("CARGO_PKG_VERSION"),
@@ -100,15 +108,28 @@ async fn main() {
             interval: Duration::from_millis(1000 / u64::from(fps)),
         })
     });
-    let node = Node::bind(
+    let running = std::env::var("JANUS_FIRMWARE").unwrap_or_else(|_| "0.1.0".to_string());
+    let extras = Extras {
+        maker_did: maker_did.clone(),
+        ota: maker_did.as_ref().map(|_| {
+            Box::new(MemorySlots::new(MemorySlots::image(&running, b"host node"), 6 * 1024 * 1024))
+                as Box<dyn OtaSink + Send>
+        }),
+        neighbours: None,
+    };
+    let node = Node::bind_with(
         identity,
         Box::new(kv),
         &manifest,
         Some(media),
         NodeConfig::default(),
+        extras,
     )
     .await
     .expect("bind");
+    if let Some(m) = &maker_did {
+        println!("ota:         accepted from {m}, running firmware {running}");
+    }
     let ticket = node.refresh_ticket(&ips);
     println!("did:         {}", node.did());
     println!("endpoint id: {}", node.endpoint().id());

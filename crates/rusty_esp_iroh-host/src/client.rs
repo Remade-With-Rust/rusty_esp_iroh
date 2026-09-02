@@ -11,6 +11,8 @@ use rusty_esp_iroh_core::assertion::{Assertion, DEFAULT_TTL_SECS};
 use rusty_esp_iroh_core::media::{HEADER_LEN, LossCounter, PacketHeader, Subscribe};
 use rusty_esp_iroh_core::mid::did::MAX_DID_LEN;
 use rusty_esp_iroh_core::mid::key::DeviceKey;
+use rusty_esp_iroh_core::esp_core::time::{Micros, WallOffset};
+use rusty_esp_iroh_core::ota::{OtaManifest, CHUNK_LEN};
 use rusty_esp_iroh_core::rpc::{self, Envelope, Request, Response, WireAssertion};
 use rusty_esp_iroh_core::sidecar::RpcReply;
 use rusty_esp_iroh_core::ticket::Ticket;
@@ -184,6 +186,94 @@ impl Client {
         Ok(response)
     }
 
+    /// The host's one-shot device→wall mapping (C2): wall clock before and
+    /// after `Request::Time`, the device reading placed mid round trip.
+    pub async fn time(&self, addr: &EndpointAddr) -> Result<WallOffset> {
+        let t0 = now_unix_micros();
+        let response = self.rpc_anonymous(addr, Request::Time).await?;
+        let t1 = now_unix_micros();
+        match response {
+            Response::Time { device_us } => {
+                WallOffset::from_exchange(t0, Micros(device_us), t1).map_err(HostError::Protocol)
+            }
+            Response::Error(e) => Err(HostError::Rpc(e)),
+            _ => Err(HostError::Protocol(
+                rusty_esp_iroh_core::esp_core::error::Error::InvalidFormat,
+            )),
+        }
+    }
+
+    /// Push a maker-signed image over `janus/ota/1` as the owner: the
+    /// envelope first, then — only after the device answered `OtaReady` —
+    /// the bytes in [`CHUNK_LEN`] pieces, then the device's verdict.
+    pub async fn ota(
+        &self,
+        addr: &EndpointAddr,
+        device_did: &str,
+        manifest: &OtaManifest,
+        image: &[u8],
+    ) -> Result<OtaOutcome> {
+        if image.len() != manifest.image_len as usize {
+            return Err(HostError::Protocol(
+                rusty_esp_iroh_core::esp_core::error::Error::InvalidFormat,
+            ));
+        }
+        let env = Envelope {
+            assertion: self.assertion(device_did)?,
+            request: Request::Ota(manifest.clone()),
+        };
+        let conn = self.connect(addr, alpn::OTA).await?;
+        let (mut send, mut recv) = conn
+            .open_bi()
+            .await
+            .map_err(|e| HostError::Stream(format!("{e}")))?;
+        let frame = rpc::encode_frame(&env)?;
+        send.write_all(&frame)
+            .await
+            .map_err(|e| HostError::Stream(format!("{e}")))?;
+        let first = self.read_frame(&mut recv).await?;
+        match first {
+            Response::OtaReady => {}
+            Response::Error(e) => return Ok(OtaOutcome::Refused(e)),
+            _ => {
+                return Err(HostError::Protocol(
+                    rusty_esp_iroh_core::esp_core::error::Error::InvalidFormat,
+                ))
+            }
+        }
+        for chunk in image.chunks(CHUNK_LEN) {
+            send.write_all(chunk)
+                .await
+                .map_err(|e| HostError::Stream(format!("{e}")))?;
+        }
+        send.finish()
+            .map_err(|e| HostError::Stream(format!("{e}")))?;
+        let verdict = self.read_frame(&mut recv).await?;
+        match verdict {
+            Response::OtaResult { firmware, sha256 } => Ok(OtaOutcome::Committed { firmware, sha256 }),
+            Response::Error(e) => Ok(OtaOutcome::Refused(e)),
+            _ => Err(HostError::Protocol(
+                rusty_esp_iroh_core::esp_core::error::Error::InvalidFormat,
+            )),
+        }
+    }
+
+    /// One length-prefixed response frame off a stream that stays open.
+    async fn read_frame(&self, recv: &mut iroh::endpoint::RecvStream) -> Result<Response> {
+        let mut prefix = [0u8; 4];
+        tokio::time::timeout(self.timeout, recv.read_exact(&mut prefix))
+            .await
+            .map_err(|_| HostError::Timeout)?
+            .map_err(|e| HostError::Stream(format!("{e}")))?;
+        let n = rpc::frame_len(&prefix)?;
+        let mut body = vec![0u8; n];
+        tokio::time::timeout(self.timeout, recv.read_exact(&mut body))
+            .await
+            .map_err(|_| HostError::Timeout)?
+            .map_err(|e| HostError::Stream(format!("{e}")))?;
+        rpc::decode_body(&body).map_err(HostError::from)
+    }
+
     /// `mata-oem-sidecar/rpc/1`: send a JSON request such as `{"op":"ping"}`.
     pub async fn sidecar(&self, addr: &EndpointAddr, request_json: &str) -> Result<RpcReply> {
         let reply = self
@@ -258,4 +348,26 @@ impl Client {
     pub async fn close(self) {
         self.endpoint.close().await;
     }
+}
+
+/// What the device said to an update.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OtaOutcome {
+    /// The image is in the boot slot; the device reports `firmware` after it boots.
+    Committed {
+        /// The manifest's firmware string.
+        firmware: String,
+        /// The digest the device computed.
+        sha256: [u8; 32],
+    },
+    /// Refused, at the named check.
+    Refused(rusty_esp_iroh_core::rpc::RpcError),
+}
+
+/// Unix microseconds now (0 before the clock is set).
+fn now_unix_micros() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0)
 }

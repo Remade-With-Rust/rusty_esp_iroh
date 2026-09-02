@@ -37,6 +37,15 @@ file, 0 lost; two subscribers at once: 0 and
 0 lost; the HTTP bridge at 16.06 fps against the
 server's 16.05.
 
+**N5 and N3 host halves (2026-09-02):** OTA over `janus/ota/1` — a
+maker-signed image manifest, every check before a byte, the bytes into the
+inactive slot with the digest running, `esp-ota`'s two-slot rollback
+modelled on the host and written for the chip; a stranger, a bad signature,
+the wrong maker, chip or model, a tampered image and a power cut all leave
+the running image byte-identical. And `rusty_esp_iroh-bridge`: one
+endpoint fronting radio neighbours whose own signed manifests it relays
+verbatim and whose telemetry it attributes per packet.
+
 ## What is in it
 
 | crate / module | what |

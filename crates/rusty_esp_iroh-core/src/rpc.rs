@@ -98,6 +98,15 @@ pub enum Request {
     },
     /// The device's current rendezvous ticket (text form).
     Ticket,
+    /// The device's monotonic clock, for the host's one-shot
+    /// [`WallOffset`](rusty_esp_core::time::WallOffset). Public.
+    Time,
+    /// An update, on `janus/ota/1` only (the image bytes follow the
+    /// envelope on the same stream); on `janus/rpc/1` it is `Unsupported`.
+    /// Owner.
+    Ota(crate::ota::OtaManifest),
+    /// The neighbours a bridge fronts (see the `-bridge` crate). Public.
+    Neighbours,
 }
 
 /// Who may ask.
@@ -114,8 +123,14 @@ impl Request {
     #[must_use]
     pub fn access(&self) -> Access {
         match self {
-            Request::Ping | Request::Manifest | Request::Ticket => Access::Public,
-            Request::Telemetry | Request::Adopt(_) | Request::Call { .. } => Access::Owner,
+            Request::Ping
+            | Request::Manifest
+            | Request::Ticket
+            | Request::Time
+            | Request::Neighbours => Access::Public,
+            Request::Telemetry | Request::Adopt(_) | Request::Call { .. } | Request::Ota(_) => {
+                Access::Owner
+            }
         }
     }
 }
@@ -162,6 +177,39 @@ pub enum Response {
     Ticket(String),
     /// Any failure.
     Error(RpcError),
+    /// Answer to [`Request::Time`]: device monotonic microseconds.
+    Time {
+        /// The device clock when the request was handled.
+        device_us: u64,
+    },
+    /// The OTA manifest passed every check; the image bytes may follow.
+    OtaReady,
+    /// The image is in the boot slot.
+    OtaResult {
+        /// The firmware string the device will report after it boots.
+        firmware: String,
+        /// The digest the device computed.
+        sha256: [u8; 32],
+    },
+    /// Answer to [`Request::Neighbours`].
+    Neighbours(Vec<NeighbourInfo>),
+}
+
+/// One device a bridge fronts: its own DID and its own signed manifest,
+/// relayed verbatim so the reader verifies the neighbour's signature, not
+/// the bridge's word.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NeighbourInfo {
+    /// The neighbour's `did:mata`.
+    pub did: String,
+    /// How it reaches the bridge: `espnow`, `lora`, ...
+    pub reach: String,
+    /// Its manifest, canonical bytes.
+    pub manifest: Vec<u8>,
+    /// The neighbour's signature over `manifest`.
+    pub sig: Vec<u8>,
+    /// Bridge-clock microseconds since the last authenticated frame.
+    pub last_seen_us: u64,
 }
 
 /// Why a request was refused or failed.
@@ -177,6 +225,9 @@ pub enum RpcError {
     Malformed,
     /// Something else, with a short reason.
     Internal(String),
+    /// The request was well formed and authorised and the device still
+    /// said no, with the reason (an OTA refusal names its check).
+    Refused(String),
 }
 
 impl From<Error> for RpcError {

@@ -21,6 +21,8 @@ use iroh::Endpoint;
 use iroh::endpoint::Connection;
 use iroh::endpoint::presets;
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
+use rusty_esp_iroh_core::ota::{OtaManifest, OtaSession, OtaSink, Refusal, CHUNK_LEN};
+use rusty_esp_iroh_core::rpc::NeighbourInfo;
 use rusty_esp_iroh_core::alpn;
 use rusty_esp_iroh_core::esp_core::capability::Manifest;
 use rusty_esp_iroh_core::esp_core::hal::Kv;
@@ -57,6 +59,36 @@ impl Default for NodeConfig {
     }
 }
 
+/// What a node answers about the devices it fronts (a bridge).
+pub trait NeighbourSource: Send + Sync {
+    /// Every neighbour with a verified manifest, as the wire form.
+    fn neighbours(&self) -> Vec<NeighbourInfo>;
+}
+
+/// The optional seams a node may be bound with: the maker it trusts for
+/// OTA and the slot the image goes to, and the neighbour table a bridge
+/// answers `Request::Neighbours` from. All absent by default.
+#[derive(Default)]
+pub struct Extras {
+    /// The maker DID whose signature an OTA manifest must carry.
+    pub maker_did: Option<String>,
+    /// Where an accepted image is written (`MemorySlots` on the host,
+    /// `esp-ota` on the chip). Without it `janus/ota/1` is `Unsupported`.
+    pub ota: Option<Box<dyn OtaSink + Send>>,
+    /// The neighbours a bridge fronts.
+    pub neighbours: Option<Arc<dyn NeighbourSource>>,
+}
+
+impl core::fmt::Debug for Extras {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Extras")
+            .field("maker_did", &self.maker_did)
+            .field("ota", &self.ota.is_some())
+            .field("neighbours", &self.neighbours.is_some())
+            .finish()
+    }
+}
+
 /// Produces media packets for one subscriber.
 pub trait MediaSource: Send {
     /// The next packet, or `None` when the stream is over.
@@ -80,6 +112,12 @@ pub struct DeviceState {
     window: Mutex<NonceWindow<64>>,
     ticket_text: Mutex<String>,
     started: std::time::Instant,
+    maker_did: Option<String>,
+    /// `None`: no slot configured. `Some(None)`: an update is in progress
+    /// and holds the slot. `Some(Some(_))`: idle.
+    ota: Option<Mutex<Option<Box<dyn OtaSink + Send>>>>,
+    last_ota: Mutex<Option<String>>,
+    neighbours: Option<Arc<dyn NeighbourSource>>,
     /// Counters, for the ledger.
     pub counters: Counters,
 }
@@ -103,6 +141,10 @@ pub struct Counters {
     pub media_packets: AtomicU32,
     /// Media packets that could not be sent.
     pub media_send_errors: AtomicU32,
+    /// Images accepted into the boot slot.
+    pub ota_committed: AtomicU32,
+    /// Updates refused, at any check.
+    pub ota_refused: AtomicU32,
 }
 
 impl DeviceState {
@@ -121,18 +163,30 @@ impl DeviceState {
         Ok(())
     }
 
+    /// The authorisation rule, counted.
+    fn authorize(&self, env: &Envelope) -> core::result::Result<rpc::Caller, RpcError> {
+        let now = now_unix();
+        let mut window = self.window.lock().expect("window lock");
+        rpc::authorize(env, &self.did, self.pin().as_ref(), now, &mut window).inspect_err(|_| {
+            self.counters.rpc_refused.fetch_add(1, Ordering::Relaxed);
+        })
+    }
+
+    /// Every check an OTA manifest must pass before a byte is accepted.
+    fn ota_admit(&self, manifest: &OtaManifest) -> core::result::Result<(), Refusal> {
+        let parsed = rusty_esp_iroh_core::esp_core::capability::ParsedManifest::parse(&self.manifest)
+            .map_err(|_| Refusal::NoOtaCapability)?;
+        if !parsed.has(rusty_esp_iroh_core::esp_core::capability::Capability::Ota) {
+            return Err(Refusal::NoOtaCapability);
+        }
+        manifest.verify(parsed.chip, &self.config.model, self.maker_did.as_deref())
+    }
+
     fn dispatch(&self, env: Envelope) -> Response {
         let now = now_unix();
-        let caller = {
-            let mut window = self.window.lock().expect("window lock");
-            rpc::authorize(&env, &self.did, self.pin().as_ref(), now, &mut window)
-        };
-        let caller = match caller {
+        let caller = match self.authorize(&env) {
             Ok(c) => c,
-            Err(e) => {
-                self.counters.rpc_refused.fetch_add(1, Ordering::Relaxed);
-                return Response::Error(e);
-            }
+            Err(e) => return Response::Error(e),
         };
         match env.request {
             Request::Ping => Response::Pong,
@@ -179,6 +233,15 @@ impl DeviceState {
             Request::Ticket => {
                 Response::Ticket(self.ticket_text.lock().expect("ticket lock").clone())
             }
+            Request::Time => Response::Time {
+                device_us: self.started.elapsed().as_micros() as u64,
+            },
+            // The image rides its own ALPN; here the envelope has no bytes behind it.
+            Request::Ota(_) => Response::Error(RpcError::Unsupported),
+            Request::Neighbours => match &self.neighbours {
+                Some(table) => Response::Neighbours(table.neighbours()),
+                None => Response::Error(RpcError::Unsupported),
+            },
         }
     }
 
@@ -234,6 +297,19 @@ impl Node {
         media: Option<MediaFactory>,
         config: NodeConfig,
     ) -> Result<Self> {
+        Self::bind_with(identity, kv, manifest, media, config, Extras::default()).await
+    }
+
+    /// [`Node::bind`] with the optional seams: the trusted maker and the OTA
+    /// slot, the neighbour table.
+    pub async fn bind_with(
+        identity: NodeIdentity,
+        kv: Box<dyn Kv + Send>,
+        manifest: &Manifest<'_>,
+        media: Option<MediaFactory>,
+        config: NodeConfig,
+        extras: Extras,
+    ) -> Result<Self> {
         let mut manifest_bytes = vec![0u8; manifest.encoded_len()];
         let n = manifest.encode(&mut manifest_bytes)?;
         manifest_bytes.truncate(n);
@@ -268,6 +344,10 @@ impl Node {
             window: Mutex::new(NonceWindow::new()),
             ticket_text: Mutex::new(String::new()),
             started: std::time::Instant::now(),
+            maker_did: extras.maker_did,
+            ota: extras.ota.map(|sink| Mutex::new(Some(sink))),
+            last_ota: Mutex::new(None),
+            neighbours: extras.neighbours,
             counters: Counters::default(),
         });
 
@@ -275,6 +355,7 @@ impl Node {
             .accept(alpn::ECHO, Echo(state.clone()))
             .accept(alpn::RPC, Rpc(state.clone()))
             .accept(alpn::SIDECAR_RPC, Sidecar(state.clone()))
+            .accept(alpn::OTA, Ota(state.clone()))
             .accept(
                 alpn::MEDIA,
                 Media {
@@ -297,6 +378,13 @@ impl Node {
     #[must_use]
     pub fn endpoint(&self) -> &Endpoint {
         &self.endpoint
+    }
+
+    /// The firmware string of the last image accepted into the boot slot,
+    /// if any; on a chip the node reboots into it instead.
+    #[must_use]
+    pub fn last_ota(&self) -> Option<String> {
+        self.state.last_ota.lock().expect("last ota").clone()
     }
 
     /// The device DID as text.
@@ -440,6 +528,127 @@ impl ProtocolHandler for Rpc {
         };
         self.0.counters.rpc.fetch_add(1, Ordering::Relaxed);
         let frame = rpc::encode_frame(&response).map_err(AcceptError::from_err)?;
+        send.write_all(&frame)
+            .await
+            .map_err(AcceptError::from_err)?;
+        send.finish()?;
+        connection.closed().await;
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct Ota(Arc<DeviceState>);
+
+impl core::fmt::Debug for Ota {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("Ota")
+    }
+}
+
+impl Ota {
+    fn refuse(&self, r: Refusal) -> Response {
+        self.0.counters.ota_refused.fetch_add(1, Ordering::Relaxed);
+        Response::Error(RpcError::Refused(format!("{r:?}")))
+    }
+}
+
+impl ProtocolHandler for Ota {
+    async fn accept(&self, connection: Connection) -> core::result::Result<(), AcceptError> {
+        let (mut send, mut recv) = connection.accept_bi().await?;
+        let mut prefix = [0u8; 4];
+        recv.read_exact(&mut prefix)
+            .await
+            .map_err(AcceptError::from_err)?;
+        let n = rpc::frame_len(&prefix).map_err(AcceptError::from_err)?;
+        let mut body = vec![0u8; n];
+        recv.read_exact(&mut body)
+            .await
+            .map_err(AcceptError::from_err)?;
+        let frame_of = |r: &Response| rpc::encode_frame(r).map_err(AcceptError::from_err);
+        // 1. the envelope: authorised as any owner-only request, then every
+        //    manifest check, all before a byte of image
+        let admitted: core::result::Result<OtaManifest, Response> = match rpc::decode_body::<Envelope>(&body) {
+            Err(_) => Err(Response::Error(RpcError::Malformed)),
+            Ok(env) => match self.0.authorize(&env) {
+                Err(e) => Err(Response::Error(e)),
+                Ok(_) => match env.request {
+                    Request::Ota(m) => match self.0.ota_admit(&m) {
+                        Ok(()) => Ok(m),
+                        Err(r) => Err(self.refuse(r)),
+                    },
+                    _ => Err(Response::Error(RpcError::Malformed)),
+                },
+            },
+        };
+        let response = match admitted {
+            Err(r) => r,
+            Ok(manifest) => {
+                // 2. the slot, taken out of the state for the duration so no
+                //    lock is held across the stream reads
+                let taken = match &self.0.ota {
+                    None => Err(Response::Error(RpcError::Unsupported)),
+                    Some(slot) => match slot.lock().expect("ota lock").take() {
+                        Some(sink) => Ok(sink),
+                        None => Err(self.refuse(Refusal::Busy)),
+                    },
+                };
+                match taken {
+                    Err(r) => r,
+                    Ok(mut sink) => {
+                        let outcome = match OtaSession::begin(manifest.clone(), sink.as_mut()) {
+                            Err(r) => Err(r),
+                            Ok(mut session) => {
+                                // 3. ready: the bytes may come. A stream that
+                                //    dies mid-way is a short image.
+                                let ready = frame_of(&Response::OtaReady)
+                                    .ok()
+                                    .filter(|_| true);
+                                let mut failed = None;
+                                match ready {
+                                    None => failed = Some(Refusal::LengthMismatch),
+                                    Some(frame) => {
+                                        if send.write_all(&frame).await.is_err() {
+                                            failed = Some(Refusal::LengthMismatch);
+                                        }
+                                    }
+                                }
+                                let mut buf = vec![0u8; CHUNK_LEN];
+                                while failed.is_none() && session.written() < manifest.image_len {
+                                    match recv.read(&mut buf).await {
+                                        Ok(Some(n)) => {
+                                            if let Err(r) = session.push(&buf[..n]) {
+                                                failed = Some(r);
+                                            }
+                                        }
+                                        Ok(None) | Err(_) => failed = Some(Refusal::LengthMismatch),
+                                    }
+                                }
+                                match failed {
+                                    Some(r) => Err(r),
+                                    None => session.finish(),
+                                }
+                            }
+                        };
+                        // the session is gone: the slot goes back either way
+                        *self.0.ota.as_ref().expect("slot").lock().expect("ota lock") = Some(sink);
+                        match outcome {
+                            Ok(sha256) => {
+                                self.0.counters.ota_committed.fetch_add(1, Ordering::Relaxed);
+                                *self.0.last_ota.lock().expect("last ota") =
+                                    Some(manifest.firmware.clone());
+                                Response::OtaResult {
+                                    firmware: manifest.firmware,
+                                    sha256,
+                                }
+                            }
+                            Err(r) => self.refuse(r),
+                        }
+                    }
+                }
+            }
+        };
+        let frame = frame_of(&response)?;
         send.write_all(&frame)
             .await
             .map_err(AcceptError::from_err)?;

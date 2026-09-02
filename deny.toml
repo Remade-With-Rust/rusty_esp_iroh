@@ -37,6 +37,7 @@ allow-git = [
   "https://github.com/Remade-With-Rust/rusty_esp_core",
   "https://github.com/Remade-With-Rust/rusty_esp_mid",
   "https://github.com/Remade-With-Rust/rusty_esp_video",
+  "https://github.com/Remade-With-Rust/rusty_esp_signal",
   "https://github.com/Remade-With-Rust/rusty_esp_image",
   # n0's rustls-rustcrypto branch: the pure-Rust TLS provider iroh needs to
   # build for Xtensa, and what keeps ring/aws-lc out of the host graph too.
