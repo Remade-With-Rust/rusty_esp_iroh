@@ -15,6 +15,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
+use crate::rpc::NeighbourInfo;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -226,6 +227,7 @@ pub fn catalog() -> Value {
         op("status", "GET", "/v1/status", "status"),
         op("janus", "GET", "/v1/janus/manifest", "janusManifest"),
         op("janus", "GET", "/v1/janus/ticket", "janusTicket"),
+        op("janus", "GET", "/v1/janus/neighbours", "janusNeighbours"),
     ])
 }
 
@@ -241,9 +243,10 @@ pub fn handle(
     info: &DeviceInfo<'_>,
     manifest: Option<(&[u8], &[u8; 64])>,
     ticket_text: Option<&str>,
+    neighbours: &[NeighbourInfo],
 ) -> Vec<u8> {
     let reply = match serde_json::from_slice::<RpcRequest>(request_bytes) {
-        Ok(req) => dispatch(&req, info, manifest, ticket_text),
+        Ok(req) => dispatch(&req, info, manifest, ticket_text, neighbours),
         Err(e) => RpcReply::err(format!("malformed RpcRequest: {e}")),
     };
     serde_json::to_vec(&reply)
@@ -255,6 +258,7 @@ fn dispatch(
     info: &DeviceInfo<'_>,
     manifest: Option<(&[u8], &[u8; 64])>,
     ticket_text: Option<&str>,
+    neighbours: &[NeighbourInfo],
 ) -> RpcReply {
     match req.op.as_str() {
         "ping" => RpcReply::ok(json!({ "ping": PING_REPLY })),
@@ -282,6 +286,23 @@ fn dispatch(
             Some(t) => RpcReply::ok(json!({ "ticket": t, "did": info.did })),
             None => RpcReply::err("endpoint not up".to_string()),
         },
+        // The devices a bridge fronts (N3): each with its own DID and its own
+        // signed manifest, verbatim, so the home computer verifies the
+        // neighbour rather than this node.
+        "janusNeighbours" => RpcReply::ok(json!({
+            "did": info.did,
+            "neighbours": neighbours
+                .iter()
+                .map(|n| json!({
+                    "did": n.did,
+                    "reach": n.reach,
+                    "manifest_hex": hex(&n.manifest),
+                    "sig_hex": hex(&n.sig),
+                    "domain": "janus-manifest-v1",
+                    "last_seen_ms": n.last_seen_us / 1000,
+                }))
+                .collect::<Vec<_>>(),
+        })),
         other => RpcReply::err(format!("unknown op {other}")),
     }
 }
@@ -361,6 +382,7 @@ mod tests {
                 &i,
                 Some((&[1, 2, 3], &sig)),
                 Some("janus1abc"),
+                &[],
             ))
             .unwrap()
         };
@@ -368,7 +390,7 @@ mod tests {
         assert!(p.ok);
         assert_eq!(p.body.unwrap()["ping"], PING_REPLY);
         let c = reply(r#"{"op":"catalog"}"#);
-        assert_eq!(c.body.unwrap().as_array().unwrap().len(), 5);
+        assert_eq!(c.body.unwrap().as_array().unwrap().len(), 6);
         let s = reply(r#"{"op":"status","authorization":"ignored"}"#);
         let body = s.body.unwrap();
         assert_eq!(body["pair"], "open");
@@ -381,7 +403,7 @@ mod tests {
         let u = reply(r#"{"op":"signin","seed":"x"}"#);
         assert!(!u.ok);
         assert_eq!(u.error.unwrap(), "unknown op signin");
-        let bad: RpcReply = serde_json::from_slice(&handle(b"not json", &i, None, None)).unwrap();
+        let bad: RpcReply = serde_json::from_slice(&handle(b"not json", &i, None, None, &[])).unwrap();
         assert!(!bad.ok);
         assert!(bad.error.unwrap().starts_with("malformed RpcRequest"));
     }

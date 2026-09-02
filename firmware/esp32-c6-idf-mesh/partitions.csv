@@ -1,0 +1,8 @@
+# ESP32-C6 with 8 MB flash (ESP32-C6-WROOM-1-N8, XIAO ESP32C6 has 4 MB: a
+# no-PSRAM iroh node is ~4 MB, so 4 MB parts cannot hold it - see the ledger).
+# The app gets 6 MiB; NVS holds the device key; PHY calibration keeps its slot.
+# Flash with: espflash flash --partition-table partitions.csv --monitor
+# Name,   Type, SubType, Offset,  Size,     Flags
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 0x600000,

@@ -248,6 +248,32 @@ re-framed onto `janus/media/1` as `nbrt` packets carrying the DID.
 
 Test totals after N3 + N5: 1 + 1 + 21 + 5 + 1 + 2 = **31** across the core, host and bridge suites.
 
+## N6 — the size ledger per tier (2026-09-02)
+
+The same node, four configurations, all `opt-level = "z"`, no LTO, one
+codegen unit, 6 MiB factory partition:
+
+| Tier | App image | Of 6 MiB | Notes |
+|---|---|---|---|
+| S3 LAN tier (`xiao-s3-sense-idf-mesh`, PSRAM, relay off) | 4 660 544 B | 74.08 % | the first build, 2026-09-02 |
+| S3 relay tier (`--features relay`) | 4 766 784 B | 75.77 % | +106 240 B for n0's relays + pkarr |
+| S3 with OTA declared (`JANUS_MAKER_DID` set) | 4 653 504 B | 73.97 % | the `esp_ota_*` sink adds nothing visible; layout drift |
+| C6 LAN tier (`esp32-c6-idf-mesh`, RISC-V, no PSRAM, relay off) | **4 575 232 B** | 72.72 % | ELF 14 788 328 B; 4 min 31 s cold with the IDF and the RISC-V GCC installed on first build |
+
+What a 4 MB part can hold is the practical answer this table gives: none
+of these; 8 MB flash is the floor, as n0 found. Heap high-water and stack
+use per tier are board rows in the umbrella's `hardware-verify.md`.
+
+## N4 — the software half is complete (2026-09-02)
+
+`Client::manifest` fetches a device's manifest and verifies the signature
+under the DID the device claims (the DID carries the key), then parses it;
+the sidecar JSON RPC gained `janusNeighbours`, a bridge's neighbours with
+their manifests and signatures in hex for the home computer's existing
+path. The bridge test exercises both: the bridge's own manifest verifies
+through `Client::manifest`, and the two neighbours listed over the sidecar
+verify under their own DIDs. iroh suites after this: **31** tests.
+
 ## Not yet measured
 
 - **Anything on a chip**: the `xiao-s3-sense-idf-mesh` firmware builds

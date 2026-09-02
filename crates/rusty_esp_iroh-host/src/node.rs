@@ -678,11 +678,18 @@ impl ProtocolHandler for Sidecar {
         let uuid = sidecar::device_uuid(&self.0.did);
         let node_id = self.0.identity.endpoint_id().to_string();
         let info = self.0.sidecar_info(&node_id, &[], &uuid);
+        let neighbours = self
+            .0
+            .neighbours
+            .as_ref()
+            .map(|n| n.neighbours())
+            .unwrap_or_default();
         let reply = sidecar::handle(
             &request,
             &info,
             Some((&self.0.manifest, &self.0.manifest_sig)),
             Some(&ticket),
+            &neighbours,
         );
         self.0.counters.sidecar.fetch_add(1, Ordering::Relaxed);
         send.write_all(&reply)

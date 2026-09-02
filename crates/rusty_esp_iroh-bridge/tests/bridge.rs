@@ -28,6 +28,13 @@ const C6: PeerAddr = [0x01, 0xC6, 0, 0, 0, 0, 0, 0];
 const LORA: PeerAddr = [0x02, 0x1A, 0, 0, 0, 0, 0, 0];
 const IMPOSTOR: PeerAddr = [0x01, 0xBA, 0xD0, 0, 0, 0, 0, 0];
 
+fn hex_bytes(s: &str) -> Vec<u8> {
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
+}
+
 fn reach_of(addr: &PeerAddr) -> Reach {
     if addr[0] == 0x02 {
         Reach::Lora
@@ -197,6 +204,30 @@ async fn neighbours_appear_through_the_bridge_with_their_own_signed_manifests() 
         assert!(n.last_seen_us < 5_000_000);
     }
     assert!(!listed.iter().any(|n| n.did == impostor.did_string()));
+    // The bridge's own manifest through the verified fetch.
+    let own = client.manifest(&addr).await.unwrap();
+    assert_eq!(own.did, bridge_did);
+    assert_eq!(own.parsed.model, "janus/bridge-pi");
+    assert!(own.parsed.has(Capability::EspNow));
+    // And the same table over the home computer's sidecar RPC (N4).
+    let reply = client
+        .sidecar(&addr, r#"{"op":"janusNeighbours"}"#)
+        .await
+        .unwrap();
+    assert!(reply.ok, "{reply:?}");
+    let body = reply.body.unwrap();
+    assert_eq!(body["did"], bridge_did);
+    let over_sidecar = body["neighbours"].as_array().unwrap();
+    assert_eq!(over_sidecar.len(), 2);
+    for n in over_sidecar {
+        let did = Did::parse(n["did"].as_str().unwrap()).unwrap();
+        let manifest = hex_bytes(n["manifest_hex"].as_str().unwrap());
+        let sig: [u8; 64] = hex_bytes(n["sig_hex"].as_str().unwrap())
+            .try_into()
+            .unwrap();
+        verify_manifest(&manifest, &sig, did.pubkey()).unwrap();
+        assert!(matches!(n["reach"].as_str(), Some("espnow" | "lora")));
+    }
 
     // Telemetry over janus/media/1, attributed.
     let sub = Subscribe {

@@ -46,6 +46,11 @@ the running image byte-identical. And `rusty_esp_iroh-bridge`: one
 endpoint fronting radio neighbours whose own signed manifests it relays
 verbatim and whose telemetry it attributes per packet.
 
+**N4 software complete, N6 host half (2026-09-02):** `Client::manifest`
+(fetched, verified under the device DID, parsed) and the sidecar's
+`janusNeighbours`; and the C6 LAN-tier firmware project
+(`firmware/esp32-c6-idf-mesh`), which compiles: 4 575 232 B. The size ledger has every tier.
+
 ## What is in it
 
 | crate / module | what |

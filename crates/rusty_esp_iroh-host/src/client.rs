@@ -186,6 +186,35 @@ impl Client {
         Ok(response)
     }
 
+    /// `Request::Manifest`, then the signature checked under the DID the
+    /// device claims (the DID carries the key) and the bytes parsed. What an
+    /// adoption loop calls before it trusts a single capability.
+    pub async fn manifest(&self, addr: &EndpointAddr) -> Result<VerifiedManifest> {
+        use rusty_esp_iroh_core::esp_core::error::Error;
+        match self.rpc_anonymous(addr, Request::Manifest).await? {
+            Response::Manifest { bytes, sig, did } => {
+                let sig: [u8; 64] = sig
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| HostError::Protocol(Error::InvalidFormat))?;
+                let did_obj = rusty_esp_iroh_core::mid::did::Did::parse(&did)
+                    .map_err(HostError::Protocol)?;
+                rusty_esp_iroh_core::mid::manifest::verify_manifest(&bytes, &sig, did_obj.pubkey())
+                    .map_err(|_| HostError::Protocol(Error::Crypto))?;
+                let parsed = rusty_esp_iroh_core::esp_core::capability::ParsedManifest::parse(&bytes)
+                    .map_err(HostError::Protocol)?;
+                Ok(VerifiedManifest {
+                    did,
+                    bytes,
+                    sig,
+                    parsed,
+                })
+            }
+            Response::Error(e) => Err(HostError::Rpc(e)),
+            _ => Err(HostError::Protocol(Error::InvalidFormat)),
+        }
+    }
+
     /// The host's one-shot device→wall mapping (C2): wall clock before and
     /// after `Request::Time`, the device reading placed mid round trip.
     pub async fn time(&self, addr: &EndpointAddr) -> Result<WallOffset> {
@@ -370,4 +399,19 @@ fn now_unix_micros() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_micros() as u64)
         .unwrap_or(0)
+}
+
+/// A device's manifest as fetched over `janus/rpc/1`, its signature already
+/// verified under the device's DID, its bytes kept for anyone who wants to
+/// verify again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedManifest {
+    /// The device DID the signature verified under.
+    pub did: String,
+    /// The canonical bytes, exactly as received.
+    pub bytes: Vec<u8>,
+    /// The device's signature over `bytes`.
+    pub sig: [u8; 64],
+    /// The bytes, read.
+    pub parsed: rusty_esp_iroh_core::esp_core::capability::ParsedManifest,
 }

@@ -54,7 +54,18 @@ async fn main() {
             client.rpc_anonymous(&addr, Request::Ping).await,
             started.elapsed()
         ),
-        "manifest" => println!("{:?}", client.rpc_anonymous(&addr, Request::Manifest).await),
+        "manifest" => match client.manifest(&addr).await {
+            Ok(m) => {
+                println!("manifest of {} verifies under its DID ({} bytes):", m.did, m.bytes.len());
+                if let Ok(text) = std::str::from_utf8(&m.bytes) {
+                    for line in text.lines() {
+                        println!("  {line}");
+                    }
+                }
+                println!("  chip {:?}, {} declaration(s)", m.parsed.chip, m.parsed.declared.len());
+            }
+            Err(e) => println!("manifest: {e}"),
+        },
         "ticket" => println!("{:?}", client.rpc_anonymous(&addr, Request::Ticket).await),
         "telemetry" => println!(
             "{:?}",
