@@ -224,7 +224,12 @@ marked valid before the next boot rolls back.
 `esp_ota_write` / `esp_ota_end` / `esp_ota_set_boot_partition`, with
 `mark_running_valid` for the freshly booted image; the mesh firmware
 declares `ota` and accepts images when `JANUS_MAKER_DID` names a maker at
-build time (see the firmware row below for its build state).
+build time. **That firmware compiles** (2026-09-02, `JANUS_MAKER_DID` set,
+Xtensa, 4 min 36 s in a cold target dir with the IDF installed): app image
+**4 653 504 B**, 73.97 % of the 6 MiB factory partition, ELF 10 296 700 B,
+and all six `esp_ota_*` entry points (`begin`, `write`, `end`,
+`set_boot_partition`, `abort`, `mark_app_valid_cancel_rollback`) present in
+the ELF. Nothing has run it.
 
 ### N3 — the bridge
 
