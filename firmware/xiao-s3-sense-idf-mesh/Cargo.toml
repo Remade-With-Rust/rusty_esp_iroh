@@ -51,6 +51,9 @@ codegen-units = 1
 default = ["std", "esp-idf-svc/native"]
 std = ["alloc", "esp-idf-svc/binstart", "esp-idf-svc/std"]
 alloc = ["esp-idf-svc/alloc"]
+# PSRAM tier: n0 relays + pkarr through the host crate (relay.rs). Off by
+# default: the LAN tier is the shipped configuration until a relay is dialled.
+relay = ["rusty_esp_iroh-host/relay"]
 
 [dependencies]
 log = "0.4"

@@ -132,7 +132,7 @@ fn main() -> Result<()> {
         };
         let media = Arc::new(|_sub: &Subscribe| -> Box<dyn MediaSource> { Box::new(TestPattern { seq: 0 }) });
         let config = NodeConfig {
-            relay: false,
+            relay: cfg!(feature = "relay"),
             model: String::from("janus/xiao-s3-sense"),
             firmware: format!("janus-mesh {}", env!("CARGO_PKG_VERSION")),
         };

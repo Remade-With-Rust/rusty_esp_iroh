@@ -30,6 +30,7 @@ export CARGO_TARGET_DIR=C:/janus-i                 # Windows only
 export JANUS_WIFI_SSID=yournet JANUS_WIFI_PASS=yourpass
 cargo build --release
 cargo run --release      # espflash flash --monitor --partition-table partitions.csv
+cargo build --release --features relay   # the PSRAM tier: n0 relays + pkarr (4 766 784 B image)
 ```
 
 An iroh node is a 4.66 MB image here (ledger), so the stock "single app, large" partition
