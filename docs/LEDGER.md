@@ -40,8 +40,7 @@ the owner — on one machine:
 | node counters | echo 11 · rpc 9 · refused 5 · sidecar 3 · media subscribers 2 · media packets 500 · send errors 0 |
 
 The N0 kill test asked for ten minutes between two laptops; this is one
-machine and seconds. The `node` and `client` examples are the two-laptop run
-and its numbers go here when it happens.
+machine and seconds. The ten-minute run on the Wi-Fi address is below.
 
 ## The Xtensa toolchain wall (2026-09-01)
 
@@ -105,6 +104,34 @@ n0's blog figures for their examples are 3.6–4.35 MB with fat LTO and
 `opt-level = "s"`; this image is 4.66 MB without LTO, with the mDNS
 component and the mID crates on top.
 
+## The ten-minute run on the Wi-Fi address (2026-09-02)
+
+The N0 kill test asks for ten minutes between two laptops. There is one
+laptop, so this is the honest substitute: the `node` and `client` examples as
+two processes on this machine, the node advertising **only the Wi-Fi
+adapter's address** (`[192.168.0.224:61156]`, not loopback), the client subscribing to
+`janus/media/1` for 600 s with the synthetic 10 packet/s source (900 B
+payloads). Method: `cargo build --release --examples`, then
+`node.exe 192.168.0.224` and `client.exe <ticket> media 600`; the counters
+are the client's `LossCounter` and the node's own counters, both printed by
+the examples.
+
+| measure | value |
+|---|---|
+| duration | 600 s |
+| packets received | **5 496** |
+| packets lost (sequence gaps) | **0** |
+| packets reordered | 0 |
+| payload bytes | 4 946 400 |
+| rate seen by the client | 9.2 pkt/s |
+| node: subscribers · packets sent · send errors | 1 · 5 481 · 0 |
+
+Two processes on one host do not exercise a radio, a switch or a second
+clock; what they exercise is the endpoint, the framing, the sequence
+accounting and the subscription lifetime over ten real minutes on a real
+interface address. The two-laptop row stays in
+`docs/plans/hardware-verify.md`.
+
 ## Not yet measured
 
 - **Anything on a chip**: the `xiao-s3-sense-idf-mesh` firmware builds
@@ -114,4 +141,5 @@ component and the mID crates on top.
   `-host` crate's `relay` feature (`relay.rs`: n0's std DNS resolver and the
   relay-certificate verifier), clippy-clean on the host; no relay has been
   dialled, and the firmware builds with relay off.
-- Two laptops for ten minutes.
+- Two laptops for ten minutes (the one-machine run above is the substitute
+  until there are two).
