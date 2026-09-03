@@ -47,7 +47,7 @@ rand = "0.9"
 # the rustls-rustcrypto provider (AES-128-GCM + X25519), so no ring and no
 # aws-lc anywhere in the graph.
 rustls = { version = "0.23", default-features = false }
-rustls-rustcrypto = { git = "https://github.com/n0-computer/rustls-rustcrypto", branch = "feature-flag-algorithms-v0.0.2", default-features = false, features = ["std", "p256"] }
+rustls-rustcrypto = { version = "0.0.2-alpha", git = "https://github.com/n0-computer/rustls-rustcrypto", branch = "feature-flag-algorithms-v0.0.2", default-features = false, features = ["std", "p256"] }
 aes = "0.8"
 aes-gcm = "0.10"
 

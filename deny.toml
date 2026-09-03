@@ -11,6 +11,10 @@ allow = [
   "ISC",
   "Zlib",
   "Unicode-3.0",
+  # public-domain dedication (async_io_stream, pharos, under iroh's wasm websocket path)
+  "Unlicense",
+  # the Mozilla root store as webpki-roots ships it
+  "CDLA-Permissive-2.0",
   "MPL-2.0",
 ]
 confidence-threshold = 0.9
@@ -28,7 +32,13 @@ deny = [
 ]
 
 [advisories]
-ignore = []
+ignore = [
+  # Unmaintained, not vulnerable: both arrive through n0's iroh graph (heapless /
+  # embassy helpers) and are build-time macro or polyfill crates. Revisit when
+  # the iroh branches move; an `unmaintained` row is not a reason to fork.
+  { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill: unmaintained polyfill pulled by iroh's embedded helpers; no code path of ours" },
+  { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained proc-macro, build-time only" },
+]
 
 [sources]
 unknown-registry = "deny"
@@ -39,6 +49,10 @@ allow-git = [
   "https://github.com/Remade-With-Rust/rusty_esp_video",
   "https://github.com/Remade-With-Rust/rusty_esp_signal",
   "https://github.com/Remade-With-Rust/rusty_esp_image",
+  # through image-core / signal-core: the shared kernels live in rusty_esp_dsp since D0
+  "https://github.com/Remade-With-Rust/rusty_esp_dsp",
+  # through rusty_esp_mid-core: the mID wire types on the upstream no-std branch (M5)
+  "https://github.com/Remade-With-Rust/mid",
   # n0's rustls-rustcrypto branch: the pure-Rust TLS provider iroh needs to
   # build for Xtensa, and what keeps ring/aws-lc out of the host graph too.
   "https://github.com/n0-computer/rustls-rustcrypto",

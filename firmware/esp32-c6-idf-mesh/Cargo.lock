@@ -5313,7 +5313,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[patch.unused]]
-name = "rusty_esp_signal-core"
+name = "rusty_esp_video-core"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -5321,5 +5321,9 @@ name = "rusty_esp_image-core"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "rusty_esp_video-core"
+name = "rusty_esp_signal-core"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "rusty_esp_dsp"
 version = "0.1.0"
