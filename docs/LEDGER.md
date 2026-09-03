@@ -296,3 +296,16 @@ verify under their own DIDs. iroh suites after this: **31** tests.
   deliberately unvalidated image rolling back on the second reset.
 - **N3 on radios:** the `Radio` seam over a serial-attached C6 and an SX1262
   on a Pi; everything above it is the host test.
+
+## The no-panic gate (host, 2026-09-02)
+
+Every parser that takes bytes from a wire, a store or a bus must return an
+error on bad input, never panic — the house rule made a test:
+`tests/no_panic.rs` feeds each one random inputs from an LCG (the same corpus
+on every machine) and mutations of a valid encoding (bit flips, overwrites,
+truncation, extension, insertion, removal), under `catch_unwind` so a failure
+names the parser and prints the input.
+
+| covered | result |
+|---|---|
+| `Ticket::decode` / `parse_text`, `Binding::decode` + `verify`, `Assertion::decode`, `base32::decode` (20 000 rounds of random bytes and mutations of valid encodings), `media::PacketHeader::parse` and the postcard `rpc::decode_frame` for `Request` and `Response` (30 000), `sidecar::handle` on 12 000 random and mutated JSON requests | no finding |

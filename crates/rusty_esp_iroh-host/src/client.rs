@@ -8,11 +8,11 @@ use iroh::endpoint::presets;
 use iroh::{Endpoint, EndpointAddr, EndpointId, RelayUrl, SecretKey};
 use rusty_esp_iroh_core::alpn;
 use rusty_esp_iroh_core::assertion::{Assertion, DEFAULT_TTL_SECS};
+use rusty_esp_iroh_core::esp_core::time::{Micros, WallOffset};
 use rusty_esp_iroh_core::media::{HEADER_LEN, LossCounter, PacketHeader, Subscribe};
 use rusty_esp_iroh_core::mid::did::MAX_DID_LEN;
 use rusty_esp_iroh_core::mid::key::DeviceKey;
-use rusty_esp_iroh_core::esp_core::time::{Micros, WallOffset};
-use rusty_esp_iroh_core::ota::{OtaManifest, CHUNK_LEN};
+use rusty_esp_iroh_core::ota::{CHUNK_LEN, OtaManifest};
 use rusty_esp_iroh_core::rpc::{self, Envelope, Request, Response, WireAssertion};
 use rusty_esp_iroh_core::sidecar::RpcReply;
 use rusty_esp_iroh_core::ticket::Ticket;
@@ -197,12 +197,13 @@ impl Client {
                     .as_slice()
                     .try_into()
                     .map_err(|_| HostError::Protocol(Error::InvalidFormat))?;
-                let did_obj = rusty_esp_iroh_core::mid::did::Did::parse(&did)
-                    .map_err(HostError::Protocol)?;
+                let did_obj =
+                    rusty_esp_iroh_core::mid::did::Did::parse(&did).map_err(HostError::Protocol)?;
                 rusty_esp_iroh_core::mid::manifest::verify_manifest(&bytes, &sig, did_obj.pubkey())
                     .map_err(|_| HostError::Protocol(Error::Crypto))?;
-                let parsed = rusty_esp_iroh_core::esp_core::capability::ParsedManifest::parse(&bytes)
-                    .map_err(HostError::Protocol)?;
+                let parsed =
+                    rusty_esp_iroh_core::esp_core::capability::ParsedManifest::parse(&bytes)
+                        .map_err(HostError::Protocol)?;
                 Ok(VerifiedManifest {
                     did,
                     bytes,
@@ -267,7 +268,7 @@ impl Client {
             _ => {
                 return Err(HostError::Protocol(
                     rusty_esp_iroh_core::esp_core::error::Error::InvalidFormat,
-                ))
+                ));
             }
         }
         for chunk in image.chunks(CHUNK_LEN) {
@@ -279,7 +280,9 @@ impl Client {
             .map_err(|e| HostError::Stream(format!("{e}")))?;
         let verdict = self.read_frame(&mut recv).await?;
         match verdict {
-            Response::OtaResult { firmware, sha256 } => Ok(OtaOutcome::Committed { firmware, sha256 }),
+            Response::OtaResult { firmware, sha256 } => {
+                Ok(OtaOutcome::Committed { firmware, sha256 })
+            }
             Response::Error(e) => Ok(OtaOutcome::Refused(e)),
             _ => Err(HostError::Protocol(
                 rusty_esp_iroh_core::esp_core::error::Error::InvalidFormat,

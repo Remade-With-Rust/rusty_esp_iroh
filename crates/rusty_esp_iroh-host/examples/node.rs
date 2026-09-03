@@ -80,7 +80,11 @@ async fn main() {
         .unwrap_or(10);
     let media = Arc::new(move |sub: &Subscribe| -> Box<dyn MediaSource> {
         if let Some(dir) = &mjpeg_dir {
-            let fps = if sub.max_fps == 0 { dir_fps } else { u32::from(sub.max_fps).min(dir_fps) };
+            let fps = if sub.max_fps == 0 {
+                dir_fps
+            } else {
+                u32::from(sub.max_fps).min(dir_fps)
+            };
             return Box::new(
                 rusty_esp_iroh_host::mjpeg::DirSource::open(std::path::Path::new(dir), fps)
                     .expect("JANUS_MJPEG_DIR holds JPEGs"),
@@ -112,8 +116,10 @@ async fn main() {
     let extras = Extras {
         maker_did: maker_did.clone(),
         ota: maker_did.as_ref().map(|_| {
-            Box::new(MemorySlots::new(MemorySlots::image(&running, b"host node"), 6 * 1024 * 1024))
-                as Box<dyn OtaSink + Send>
+            Box::new(MemorySlots::new(
+                MemorySlots::image(&running, b"host node"),
+                6 * 1024 * 1024,
+            )) as Box<dyn OtaSink + Send>
         }),
         neighbours: None,
     };

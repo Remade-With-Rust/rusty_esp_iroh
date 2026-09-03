@@ -14,10 +14,10 @@ use std::time::{Duration, Instant};
 
 use rusty_esp_iroh_core::media::Subscribe;
 use rusty_esp_iroh_core::mid::key::DeviceKey;
+use rusty_esp_iroh_core::ota::OtaManifest;
 use rusty_esp_iroh_core::rpc::{Request, Response};
 use rusty_esp_iroh_core::ticket::Ticket;
 use rusty_esp_iroh_host::Client;
-use rusty_esp_iroh_core::ota::OtaManifest;
 use rusty_esp_iroh_host::client::endpoint_addr;
 
 #[tokio::main(flavor = "current_thread")]
@@ -56,13 +56,21 @@ async fn main() {
         ),
         "manifest" => match client.manifest(&addr).await {
             Ok(m) => {
-                println!("manifest of {} verifies under its DID ({} bytes):", m.did, m.bytes.len());
+                println!(
+                    "manifest of {} verifies under its DID ({} bytes):",
+                    m.did,
+                    m.bytes.len()
+                );
                 if let Ok(text) = std::str::from_utf8(&m.bytes) {
                     for line in text.lines() {
                         println!("  {line}");
                     }
                 }
-                println!("  chip {:?}, {} declaration(s)", m.parsed.chip, m.parsed.declared.len());
+                println!(
+                    "  chip {:?}, {} declaration(s)",
+                    m.parsed.chip,
+                    m.parsed.declared.len()
+                );
             }
             Err(e) => println!("manifest: {e}"),
         },
@@ -93,7 +101,12 @@ async fn main() {
                             .ok()
                             .and_then(|d| {
                                 let sig: [u8; 64] = n.sig.as_slice().try_into().ok()?;
-                                rusty_esp_iroh_core::mid::manifest::verify_manifest(&n.manifest, &sig, d.pubkey()).ok()
+                                rusty_esp_iroh_core::mid::manifest::verify_manifest(
+                                    &n.manifest,
+                                    &sig,
+                                    d.pubkey(),
+                                )
+                                .ok()
                             })
                             .is_some();
                         println!(
@@ -159,21 +172,28 @@ async fn main() {
             let mut largest = 0usize;
             let wall = Instant::now();
             let counter = client
-                .subscribe(&addr, &sub, u64::MAX, Duration::from_secs(secs), |h, payload| {
-                    bytes += payload.len() as u64;
-                    largest = largest.max(payload.len());
-                    if &h.codec == b"mjpg" {
-                        frames += 1;
-                        first_ts.get_or_insert(h.timestamp_us);
-                        last_ts = h.timestamp_us;
-                        let saved = out_dir.as_ref().is_some_and(|d| {
-                            std::fs::write(d.join(format!("frame-{:06}.jpg", h.seq)), payload).is_ok()
-                        });
-                        if saved {
-                            written += 1;
+                .subscribe(
+                    &addr,
+                    &sub,
+                    u64::MAX,
+                    Duration::from_secs(secs),
+                    |h, payload| {
+                        bytes += payload.len() as u64;
+                        largest = largest.max(payload.len());
+                        if &h.codec == b"mjpg" {
+                            frames += 1;
+                            first_ts.get_or_insert(h.timestamp_us);
+                            last_ts = h.timestamp_us;
+                            let saved = out_dir.as_ref().is_some_and(|d| {
+                                std::fs::write(d.join(format!("frame-{:06}.jpg", h.seq)), payload)
+                                    .is_ok()
+                            });
+                            if saved {
+                                written += 1;
+                            }
                         }
-                    }
-                })
+                    },
+                )
                 .await
                 .expect("subscribe");
             let elapsed = wall.elapsed().as_secs_f64();
@@ -190,7 +210,11 @@ async fn main() {
                 println!(
                     "mjpeg: frames={frames} written={written} largest={largest} B receiver_fps={:.2} source_fps={:.2} (source span {:.1} s)",
                     frames as f64 / elapsed,
-                    if source_span > 0.0 { (frames - 1) as f64 / source_span } else { 0.0 },
+                    if source_span > 0.0 {
+                        (frames - 1) as f64 / source_span
+                    } else {
+                        0.0
+                    },
                     source_span
                 );
             }

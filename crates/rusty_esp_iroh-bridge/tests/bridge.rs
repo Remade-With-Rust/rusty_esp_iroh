@@ -12,8 +12,8 @@ use rusty_esp_core::capability::{Capability, Chip, Declared, Manifest, ParsedMan
 use rusty_esp_core::hal::host::{InsecureTestRng, MemoryKv};
 use rusty_esp_iroh_bridge::sim::NeighbourSim;
 use rusty_esp_iroh_bridge::{
-    Bridge, BridgeCore, FakeBus, HostRng, NeighbourPacket, PeerAddr, Reach,
-    CODEC_NEIGHBOUR_TELEMETRY,
+    Bridge, BridgeCore, CODEC_NEIGHBOUR_TELEMETRY, FakeBus, HostRng, NeighbourPacket, PeerAddr,
+    Reach,
 };
 use rusty_esp_iroh_core::media::Subscribe;
 use rusty_esp_iroh_core::rpc::{Request, Response};

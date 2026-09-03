@@ -11,11 +11,11 @@ use rusty_esp_core::hal::Rng;
 use rusty_esp_core::time::Micros;
 use rusty_esp_mid_core::key::DeviceKey;
 use rusty_esp_mid_core::manifest::sign_manifest;
-use rusty_esp_signal_core::link::{Handshake, Session, ACCEPT_LEN, DEFAULT_LIFETIME, MAX_PAYLOAD};
+use rusty_esp_signal_core::link::{ACCEPT_LEN, DEFAULT_LIFETIME, Handshake, MAX_PAYLOAD, Session};
 
+use crate::DynRng;
 use crate::neighbour::{MSG_MANIFEST, MSG_TELEMETRY};
 use crate::radio::{PeerAddr, Radio};
-use crate::DynRng;
 
 /// A simulated neighbour.
 pub struct NeighbourSim<R: Radio> {
@@ -93,7 +93,7 @@ impl<R: Radio> NeighbourSim<R> {
             }
             match self.radio.recv(&mut buf, left)? {
                 Some((from, n)) if from == self.bridge && n == ACCEPT_LEN => {
-                    break buf[..n].to_vec()
+                    break buf[..n].to_vec();
                 }
                 Some(_) => continue,
                 None => return Err(Error::Timeout),

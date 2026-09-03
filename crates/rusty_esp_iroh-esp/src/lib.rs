@@ -88,9 +88,10 @@ pub mod idf {
     #[allow(unsafe_code)]
     mod ota {
         use esp_idf_svc::sys::{
-            esp, esp_ota_abort, esp_ota_begin, esp_ota_end, esp_ota_get_next_update_partition,
-            esp_ota_handle_t, esp_ota_mark_app_valid_cancel_rollback, esp_ota_set_boot_partition,
-            esp_ota_write, esp_partition_t, EspError,
+            EspError, esp, esp_ota_abort, esp_ota_begin, esp_ota_end,
+            esp_ota_get_next_update_partition, esp_ota_handle_t,
+            esp_ota_mark_app_valid_cancel_rollback, esp_ota_set_boot_partition, esp_ota_write,
+            esp_partition_t,
         };
         use rusty_esp_iroh_core::esp_core::error::{Error, Result};
         use rusty_esp_iroh_core::ota::OtaSink;

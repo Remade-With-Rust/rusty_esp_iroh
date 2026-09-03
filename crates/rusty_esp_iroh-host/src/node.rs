@@ -21,8 +21,6 @@ use iroh::Endpoint;
 use iroh::endpoint::Connection;
 use iroh::endpoint::presets;
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
-use rusty_esp_iroh_core::ota::{OtaManifest, OtaSession, OtaSink, Refusal, CHUNK_LEN};
-use rusty_esp_iroh_core::rpc::NeighbourInfo;
 use rusty_esp_iroh_core::alpn;
 use rusty_esp_iroh_core::esp_core::capability::Manifest;
 use rusty_esp_iroh_core::esp_core::hal::Kv;
@@ -30,6 +28,8 @@ use rusty_esp_iroh_core::media::{HEADER_LEN, PacketHeader, Subscribe};
 use rusty_esp_iroh_core::mid::adoption::{Adoption, KV_ADOPTION, KV_OWNER_PIN, OwnerPin};
 use rusty_esp_iroh_core::mid::manifest::sign_manifest_bytes;
 use rusty_esp_iroh_core::mid::nonce::NonceWindow;
+use rusty_esp_iroh_core::ota::{CHUNK_LEN, OtaManifest, OtaSession, OtaSink, Refusal};
+use rusty_esp_iroh_core::rpc::NeighbourInfo;
 use rusty_esp_iroh_core::rpc::{self, Envelope, Request, Response, RpcError, Telemetry};
 use rusty_esp_iroh_core::sidecar::{self, DeviceInfo, PairState, Tier};
 use rusty_esp_iroh_core::ticket::{MAX_TEXT_LEN, Ticket};
@@ -174,8 +174,9 @@ impl DeviceState {
 
     /// Every check an OTA manifest must pass before a byte is accepted.
     fn ota_admit(&self, manifest: &OtaManifest) -> core::result::Result<(), Refusal> {
-        let parsed = rusty_esp_iroh_core::esp_core::capability::ParsedManifest::parse(&self.manifest)
-            .map_err(|_| Refusal::NoOtaCapability)?;
+        let parsed =
+            rusty_esp_iroh_core::esp_core::capability::ParsedManifest::parse(&self.manifest)
+                .map_err(|_| Refusal::NoOtaCapability)?;
         if !parsed.has(rusty_esp_iroh_core::esp_core::capability::Capability::Ota) {
             return Err(Refusal::NoOtaCapability);
         }
@@ -568,19 +569,20 @@ impl ProtocolHandler for Ota {
         let frame_of = |r: &Response| rpc::encode_frame(r).map_err(AcceptError::from_err);
         // 1. the envelope: authorised as any owner-only request, then every
         //    manifest check, all before a byte of image
-        let admitted: core::result::Result<OtaManifest, Response> = match rpc::decode_body::<Envelope>(&body) {
-            Err(_) => Err(Response::Error(RpcError::Malformed)),
-            Ok(env) => match self.0.authorize(&env) {
-                Err(e) => Err(Response::Error(e)),
-                Ok(_) => match env.request {
-                    Request::Ota(m) => match self.0.ota_admit(&m) {
-                        Ok(()) => Ok(m),
-                        Err(r) => Err(self.refuse(r)),
+        let admitted: core::result::Result<OtaManifest, Response> =
+            match rpc::decode_body::<Envelope>(&body) {
+                Err(_) => Err(Response::Error(RpcError::Malformed)),
+                Ok(env) => match self.0.authorize(&env) {
+                    Err(e) => Err(Response::Error(e)),
+                    Ok(_) => match env.request {
+                        Request::Ota(m) => match self.0.ota_admit(&m) {
+                            Ok(()) => Ok(m),
+                            Err(r) => Err(self.refuse(r)),
+                        },
+                        _ => Err(Response::Error(RpcError::Malformed)),
                     },
-                    _ => Err(Response::Error(RpcError::Malformed)),
                 },
-            },
-        };
+            };
         let response = match admitted {
             Err(r) => r,
             Ok(manifest) => {
@@ -601,9 +603,7 @@ impl ProtocolHandler for Ota {
                             Ok(mut session) => {
                                 // 3. ready: the bytes may come. A stream that
                                 //    dies mid-way is a short image.
-                                let ready = frame_of(&Response::OtaReady)
-                                    .ok()
-                                    .filter(|_| true);
+                                let ready = frame_of(&Response::OtaReady).ok().filter(|_| true);
                                 let mut failed = None;
                                 match ready {
                                     None => failed = Some(Refusal::LengthMismatch),
@@ -634,7 +634,10 @@ impl ProtocolHandler for Ota {
                         *self.0.ota.as_ref().expect("slot").lock().expect("ota lock") = Some(sink);
                         match outcome {
                             Ok(sha256) => {
-                                self.0.counters.ota_committed.fetch_add(1, Ordering::Relaxed);
+                                self.0
+                                    .counters
+                                    .ota_committed
+                                    .fetch_add(1, Ordering::Relaxed);
                                 *self.0.last_ota.lock().expect("last ota") =
                                     Some(manifest.firmware.clone());
                                 Response::OtaResult {

@@ -31,15 +31,15 @@ use std::time::{Duration, Instant};
 
 use rusty_esp_core::hal::Rng;
 use rusty_esp_core::time::Micros;
-use rusty_esp_iroh_core::media::{PacketHeader, Subscribe, FLAG_KEY};
+use rusty_esp_iroh_core::media::{FLAG_KEY, PacketHeader, Subscribe};
 use rusty_esp_iroh_core::rpc::NeighbourInfo;
-use rusty_esp_iroh_host::node::{MediaFactory, NeighbourSource};
 use rusty_esp_iroh_host::MediaSource;
+use rusty_esp_iroh_host::node::{MediaFactory, NeighbourSource};
 
 pub use neighbour::{
-    BridgeCore, BridgeCounters, Event, NeighbourPacket, Reach, CODEC_NEIGHBOUR_TELEMETRY,
+    BridgeCore, BridgeCounters, CODEC_NEIGHBOUR_TELEMETRY, Event, NeighbourPacket, Reach,
 };
-pub use radio::{FakeBus, FakeRadio, PeerAddr, Radio, BROADCAST};
+pub use radio::{BROADCAST, FakeBus, FakeRadio, PeerAddr, Radio};
 
 /// The operating system's random source as the family's [`Rng`] seam, for
 /// the bridge's handshakes on a host.

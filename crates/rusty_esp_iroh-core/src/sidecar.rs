@@ -403,7 +403,8 @@ mod tests {
         let u = reply(r#"{"op":"signin","seed":"x"}"#);
         assert!(!u.ok);
         assert_eq!(u.error.unwrap(), "unknown op signin");
-        let bad: RpcReply = serde_json::from_slice(&handle(b"not json", &i, None, None, &[])).unwrap();
+        let bad: RpcReply =
+            serde_json::from_slice(&handle(b"not json", &i, None, None, &[])).unwrap();
         assert!(!bad.ok);
         assert!(bad.error.unwrap().starts_with("malformed RpcRequest"));
     }

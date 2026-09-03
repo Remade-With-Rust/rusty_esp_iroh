@@ -17,7 +17,7 @@ use rusty_esp_iroh_core::mid::adoption::{AdoptionFields, CapList};
 use rusty_esp_iroh_core::mid::key::DeviceKey;
 use rusty_esp_iroh_core::ota::{MemorySlots, OtaManifest, OtaSink};
 use rusty_esp_iroh_core::rpc::{Request, Response, RpcError};
-use rusty_esp_iroh_host::client::{endpoint_addr, OtaOutcome};
+use rusty_esp_iroh_host::client::{OtaOutcome, endpoint_addr};
 use rusty_esp_iroh_host::{Client, Extras, Node, NodeConfig, NodeIdentity};
 
 /// The slots, shared with the test so it can boot and inspect them while the

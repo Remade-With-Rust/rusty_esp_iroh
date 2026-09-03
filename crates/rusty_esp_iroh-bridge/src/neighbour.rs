@@ -26,12 +26,12 @@ use rusty_esp_mid_core::did::Did;
 use rusty_esp_mid_core::key::DeviceKey;
 use rusty_esp_mid_core::manifest::verify_manifest;
 use rusty_esp_signal_core::link::{
-    Handshake, Pending, Session, CONFIRM_LEN, DEFAULT_LIFETIME, HELLO_LEN, VERSION,
+    CONFIRM_LEN, DEFAULT_LIFETIME, HELLO_LEN, Handshake, Pending, Session, VERSION,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::radio::PeerAddr;
 use crate::DynRng;
+use crate::radio::PeerAddr;
 
 /// The media codec tag of re-framed neighbour telemetry.
 pub const CODEC_NEIGHBOUR_TELEMETRY: [u8; 4] = *b"nbrt";

@@ -22,7 +22,7 @@ use alloc::vec::Vec;
 use rusty_esp_core::capability::Chip;
 use rusty_esp_core::error::{Error, Result};
 use rusty_esp_mid_core::did::Did;
-use rusty_esp_mid_core::signer::{verify_prehash, DeviceSigner};
+use rusty_esp_mid_core::signer::{DeviceSigner, verify_prehash};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -575,8 +575,8 @@ mod tests {
         assert_eq!(MemorySlots::firmware_of(slots.boot()), Some("1.5.0"));
         // too big for the slot
         let mut small = MemorySlots::new(old, 100);
-        let m2 = OtaManifest::sign("janus/cam", "2", Chip::Esp32S3, &[1u8; 200], &did, &key)
-            .unwrap();
+        let m2 =
+            OtaManifest::sign("janus/cam", "2", Chip::Esp32S3, &[1u8; 200], &did, &key).unwrap();
         assert!(matches!(
             OtaSession::begin(m2, &mut small),
             Err(Refusal::TooLarge)

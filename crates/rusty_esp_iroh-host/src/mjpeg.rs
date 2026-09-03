@@ -18,7 +18,7 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
-use rusty_esp_iroh_core::media::{PacketHeader, FLAG_KEY};
+use rusty_esp_iroh_core::media::{FLAG_KEY, PacketHeader};
 
 use crate::node::MediaSource;
 
@@ -50,9 +50,9 @@ impl DirSource {
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| {
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+                p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg")
+                })
             })
             .collect();
         names.sort();
@@ -136,7 +136,7 @@ mod http {
     use std::thread;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use rusty_esp_iroh_core::media::{PacketHeader, FLAG_KEY};
+    use rusty_esp_iroh_core::media::{FLAG_KEY, PacketHeader};
     use rusty_esp_video_core::mjpeg_reader::Reader;
 
     use super::CODEC_MJPEG;
