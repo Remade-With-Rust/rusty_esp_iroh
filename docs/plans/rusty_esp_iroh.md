@@ -129,6 +129,7 @@ this crate plus MQTT ingest.
 
 | Date | Decision |
 |---|---|
+| 2026-09-02 | `cargo deny` stays red on `rustls-webpki 0.102.8` (four advisories): the only fix upstream moves `rustls-rustcrypto` to the RustCrypto 0.14 release candidates and doubles P-256 / SHA-2 in every firmware; recorded in the ledger, decided when the stable generation catches up. |
 | 2026-09-01 | iroh runs on Track A only; `no_std` reaches the mesh through the bridge; the Pi hub is the first bridge. |
 | 2026-09-01 | Five crates in this package (facade, core, esp, host, bridge) — the documented exception to the three-crate shape. |
 | 2026-09-01 | Speak `mata-oem-sidecar/rpc/1` and advertise the sidecar mDNS service for day-one visibility; `janus/*` ALPNs for everything new. |

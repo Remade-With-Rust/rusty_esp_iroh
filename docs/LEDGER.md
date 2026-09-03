@@ -309,3 +309,29 @@ names the parser and prints the input.
 | covered | result |
 |---|---|
 | `Ticket::decode` / `parse_text`, `Binding::decode` + `verify`, `Assertion::decode`, `base32::decode` (20 000 rounds of random bytes and mutations of valid encodings), `media::PacketHeader::parse` and the postcard `rpc::decode_frame` for `Request` and `Response` (30 000), `sidecar::handle` on 12 000 random and mutated JSON requests | no finding |
+
+## The webpki pin: why `cargo deny` stays red here (decision record, 2026-09-02)
+
+`cargo deny check` reports four RUSTSEC advisories on `rustls-webpki 0.102.8`
+(RUSTSEC-2026-0049 CRL distribution-point matching, RUSTSEC-2026-0098 URI
+name constraints, a wildcard-name constraint, a reachable CRL-parse panic).
+The fixes live in 0.103; nothing else in the graph wants 0.102, and the one
+crate that does is n0's `rustls-rustcrypto` on branch
+`feature-flag-algorithms-v0.0.2`, whose manifest pins `webpki = 0.102.0`.
+
+The way out upstream exists and was checked: n0's later branch
+`feature-flag-algorithms` (2026-03-05) drops `webpki` altogether — but it
+moves the whole provider to the RustCrypto release-candidate generation
+(`p256 0.14.0-rc`, `sha2 0.11.0-rc`, `ecdsa 0.17.0-rc`, `ed25519-dalek
+3.0.0-pre`, `aes-gcm 0.11.0-rc`, `rsa 0.10.0-rc`), while every Janus crate
+and `mid` sit on the stable `p256 0.13` / `sha2 0.10` line. Taking it would
+put a second P-256 and a second SHA-2 into every firmware graph — the exact
+thing the family's "one P-256, one SHA-2 per image" rule (and the S3's flash
+budget) forbids — on pre-release crypto. RustCrypto's own `rustls-rustcrypto`
+master is the same generation with no algorithm features at all.
+
+So the pin stays, stated: the advisories are in certificate-revocation and
+name-constraint corner cases of the relay's TLS path, where the peer is an
+iroh relay we choose; the trade is not ours to make silently. It flips the
+day n0 (or upstream) ships algorithm features on the stable crate
+generation, or the family moves to 0.14 as a whole.
