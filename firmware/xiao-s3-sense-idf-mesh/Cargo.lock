@@ -2450,9 +2450,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "mid-signer"
+version = "0.2.0"
+source = "git+https://github.com/Remade-With-Rust/mid?branch=device-signer-leaf#6d42433e5b291ac2c6a03f9bed8109622313d6cd"
+dependencies = [
+ "p256",
+ "rand_core 0.6.4",
+]
+
+[[package]]
 name = "mid-types"
 version = "0.2.0"
-source = "git+https://github.com/Remade-With-Rust/mid?branch=no-std-types#8b7a16dbf2842ee41f8e87c2e39391239e995547"
+source = "git+https://github.com/Remade-With-Rust/mid?branch=device-signer-leaf#6d42433e5b291ac2c6a03f9bed8109622313d6cd"
 dependencies = [
  "serde",
  "serde_json",
@@ -3691,6 +3700,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bs58",
+ "mid-signer",
  "mid-types",
  "p256",
  "rusty_esp_core",
@@ -5316,17 +5326,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[patch.unused]]
-name = "rusty_esp_image-core"
-version = "0.1.0"
-
-[[patch.unused]]
 name = "rusty_esp_dsp"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "rusty_esp_signal-core"
+name = "rusty_esp_image-core"
 version = "0.1.0"
 
 [[patch.unused]]
 name = "rusty_esp_video-core"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "rusty_esp_signal-core"
 version = "0.1.0"
