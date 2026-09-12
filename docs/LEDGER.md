@@ -579,3 +579,25 @@ Free internal heap, same board, same cell, at the 300-frame mark:
 row says the two that came out were contributing nothing anyway. Whether this
 is what the media path needed is still the next trip's question: idle proves
 nothing, because the crash only happened under load.
+
+### Quieting a library silenced a row (2026-09-11)
+
+Silencing iroh's chatty log targets took `iroh::endpoint` with them, and that
+target prints the endpoint id once at startup — which is the line an offline
+run reads to prove the endpoint key survived a reflash. The next trip stopped
+at pre-flight with `endpoint-stable FAIL … ()`: an empty id, not a changed
+one. A trip spent on a one-word mistake.
+
+`iroh::endpoint` is now excluded from the quieting by name, with the reason
+beside it. The runner also says which way the check failed — no line at all,
+versus an id that genuinely changed — because those are different findings and
+the message read as though the key had not persisted.
+
+Verified on the board after the fix: **one** `endpoint; id=` line, **zero**
+`poll_send` lines, free internal heap 73,131 B. The row and the quieting hold
+together.
+
+**The standing lesson.** Anything a runner parses off the serial is part of
+the device's contract, not incidental output, and a log level is a load-bearing
+decision. The generated sketch's own banner lines are safe; a dependency's are
+borrowed, and this one should eventually be the sketch's to print.
