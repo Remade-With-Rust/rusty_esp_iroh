@@ -220,23 +220,39 @@ pub mod idf {
         hostname: &str,
         ips: &[IpAddr],
     ) -> Result<EspMdns, EspError> {
+        advertise_parts(
+            hostname,
+            "Janus device",
+            SERVICE_TYPE,
+            node.port(),
+            &node.sidecar_txt(ips),
+        )
+    }
+
+    /// The same advertisement from its parts, for a caller that has the TXT
+    /// record and the port but not the [`Node`] — a generated sketch, whose
+    /// node lives inside the `rusty_esp_arduino` facade and is never handed
+    /// out. `service_type` is the full mDNS type; ESP-IDF wants the service
+    /// and protocol labels separately, and splitting it is this function's
+    /// job so no caller has to know that. Keep the returned handle alive.
+    #[cfg(any(esp_idf_comp_mdns_enabled, esp_idf_comp_espressif__mdns_enabled))]
+    pub fn advertise_parts(
+        hostname: &str,
+        instance: &str,
+        service_type: &str,
+        port: u16,
+        txt: &[(alloc::string::String, alloc::string::String)],
+    ) -> Result<EspMdns, EspError> {
         let mut mdns = EspMdns::take()?;
         mdns.set_hostname(hostname)?;
-        mdns.set_instance_name("Janus device")?;
-        let txt = node.sidecar_txt(ips);
+        mdns.set_instance_name(instance)?;
         let pairs: Vec<(&str, &str)> = txt.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        // SERVICE_TYPE is "_mata-oem-sidecar._tcp.local."; ESP-IDF wants the
-        // service and protocol parts separately.
-        let (service, rest) = SERVICE_TYPE
+        let (service, rest) = service_type
             .split_once('.')
             .unwrap_or(("_mata-oem-sidecar", "_tcp.local."));
         let proto = rest.split_once('.').map_or("_tcp", |(p, _)| p);
-        mdns.add_service(Some("Janus device"), service, proto, node.port(), &pairs)?;
-        log::info!(
-            "mdns: {service}.{proto} port {} with {} TXT keys",
-            node.port(),
-            pairs.len()
-        );
+        mdns.add_service(Some(instance), service, proto, port, &pairs)?;
+        log::info!("mdns: {hostname}.local {service}.{proto} port {port} with {} TXT keys", pairs.len());
         Ok(mdns)
     }
 }
