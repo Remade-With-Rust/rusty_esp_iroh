@@ -413,3 +413,39 @@ connection open, which the host API does not expose today. Recorded as a gap.
 computer": the subscriber was `rusty_esp_iroh-host`'s own client on a laptop,
 because mata-master waits on the iroh 0.97-versus-1.1 skew. The device half is
 the whole of what a board can prove alone, and this is it.
+
+### What stands between C2 and a home computer (read 2026-09-11, both repos)
+
+C2's note used to say the home-computer half "waits on the iroh
+0.97-versus-1.1 skew". That named a cause nobody had checked. Read on
+mata-master's `janus-fleet-proposal` branch and here, the picture is four
+things, and the version gap is neither the first nor the one that is proven:
+
+1. **The device does not advertise itself.** A generated mesh cell compiles no
+   mDNS in (the project adds only `espressif/esp32-camera`) and the facade
+   never calls `advertise_sidecar`, which J3's hand-written firmware does. So
+   nothing can discover C2; it is reachable by ticket alone. **Ours, and
+   nothing blocks it.**
+2. **Discovery does not need iroh at all.** The home computer's pair client
+   browses mDNS through `mdns-sd`, and `packages/janus-fleet` has no iroh
+   dependency — it reads TXT strings (`iroh_node_id`, `iroh_direct`,
+   `iroh_alpns`). So step 1 alone is enough to get a Janus device **listed**.
+   The version question only reaches the *dial*.
+3. **Whether iroh 0.97 can dial iroh 1.1 on a LAN is untested.** Janus pins
+   `iroh = "1.1"`; mata-master's lockfile resolves `iroh 0.97.0` in eight
+   packages. Nobody has tried it — not here, not there. It is an assumption
+   gating a whole workstream and it is an afternoon's experiment: a throwaway
+   0.97 client dialling this board.
+4. **The home-computer side's own blockers are not versions.** Its proposal
+   names three: no `ProofKind` backs a media claim, `MediaController::spin_up`
+   returns `Unavailable` until `rusty_esp_iroh-host` is wired in, and the
+   adoption loop cannot live where it is needed because the pair client
+   depends on the daemon crate.
+
+If the dial does turn out to be incompatible, the fix there is an upgrade, not
+a second endpoint: mata-master's iroh surface is centralised in
+`mata-sync/src/network.rs` (~128 lines) with eight cross-crate public
+signatures, and its own upgrade plan already schedules `iroh 0.97→1.1 last`.
+Running two endpoints in one process is the thing that repo has already been
+bitten by and wrote down — a first-call-wins global node, one advertised
+`iroh_node_id`, and one secret-key file.
