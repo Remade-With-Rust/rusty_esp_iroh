@@ -4,21 +4,43 @@
 //! cargo run -p rusty_esp_iroh-host --example client -- <ticket> echo
 //! cargo run -p rusty_esp_iroh-host --example client -- <ticket> ping|manifest|telemetry|sidecar
 //! cargo run -p rusty_esp_iroh-host --example client -- <ticket> media <seconds>
+//! cargo run -p rusty_esp_iroh-host --example client -- <ticket> adopt
 //! ```
 //!
 //! `telemetry` needs an owner key; this example mints a throwaway caller
 //! key, so a device that already has an owner answers `Denied` — which is
 //! the point.
+//!
+//! `adopt` makes this example's caller key the device's owner, which the
+//! device keeps. It is a deterministic bench key, not a person's identity,
+//! and the device says so afterwards by advertising `pair_state=paired`.
 
 use std::time::{Duration, Instant};
 
 use rusty_esp_iroh_core::media::Subscribe;
+use rusty_esp_iroh_core::mid::adoption::{AdoptionFields, CapList};
 use rusty_esp_iroh_core::mid::key::DeviceKey;
 use rusty_esp_iroh_core::ota::OtaManifest;
-use rusty_esp_iroh_core::rpc::{Request, Response};
+use rusty_esp_iroh_core::rpc::{Request, Response, RpcError};
 use rusty_esp_iroh_core::ticket::Ticket;
 use rusty_esp_iroh_host::Client;
 use rusty_esp_iroh_host::client::endpoint_addr;
+
+/// The one key this example acts as. Deterministic on purpose: a device it
+/// adopts must still recognise it on the next run, and a bench that mints a
+/// fresh owner every time can never test what adoption is for.
+fn caller_key() -> DeviceKey {
+    DeviceKey::from_seed_for_tests("example-client", "laptop")
+}
+
+/// A key's `did:mata` as text.
+fn did_string(key: &DeviceKey) -> String {
+    let mut buf = [0u8; 64];
+    key.did()
+        .write(&mut buf)
+        .map(String::from)
+        .unwrap_or_default()
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -35,7 +57,7 @@ async fn main() {
             d.write(&mut buf).map(String::from).unwrap_or_default()
         })
         .unwrap_or_default();
-    let caller = DeviceKey::from_seed_for_tests("example-client", "laptop");
+    let caller = caller_key();
     let client = Client::bind(None, Some(caller), ticket.relay().is_some())
         .await
         .expect("bind");
@@ -218,6 +240,114 @@ async fn main() {
                     source_span
                 );
             }
+        }
+        "adopt" => {
+            // The device's own DID, from its signed manifest rather than from
+            // the ticket: adopting the wrong identity is exactly what the
+            // device is supposed to refuse, so ask it who it is.
+            let did = match client.manifest(&addr).await {
+                Ok(m) => m.did,
+                Err(e) => {
+                    println!("ADOPT fail: no manifest: {e}");
+                    return;
+                }
+            };
+            let owner_did = did_string(&caller_key());
+            println!("adopt: device {did}");
+            println!("adopt: owner  {owner_did}  (a deterministic bench key, not a person)");
+
+            let key = caller_key();
+            // The DID has to outlive the borrow of its key material.
+            let key_did = key.did();
+            let caps = ["media:subscribe@*", "telemetry:read@*"];
+            let fields = AdoptionFields {
+                device_did: &did,
+                owner_did: &owner_did,
+                owner_genesis_pubkey: key_did.pubkey(),
+                hub_endpoint_id: &[0u8; 32],
+                hub_relay: "",
+                hub_host: "",
+                caps: CapList::Slice(&caps),
+                roster_version: 3,
+                // The device has no wall clock on a LAN-direct link, so an
+                // expiry it cannot evaluate would be worse than none.
+                issued_at: 1_700_000_000,
+                expires_at: 0,
+            };
+            let mut buf = vec![0u8; 1024];
+            let n = match fields.sign_into(&key, &mut buf) {
+                Ok(n) => n,
+                Err(e) => {
+                    println!("ADOPT fail: could not sign: {e:?}");
+                    return;
+                }
+            };
+            buf.truncate(n);
+            println!("adopt: signed {n} bytes");
+
+            let accepted = match client.rpc(&addr, &did, Request::Adopt(buf.clone())).await {
+                Ok(Response::Adopted { roster_version }) => {
+                    println!("adopt: accepted roster_version={roster_version}");
+                    true
+                }
+                Ok(other) => {
+                    println!("adopt: refused {other:?}");
+                    false
+                }
+                Err(e) => {
+                    println!("adopt: error {e}");
+                    false
+                }
+            };
+
+            // A stranger presenting the owner's own record must be refused:
+            // the record is public once it has been sent, and only the key
+            // named inside it may use it.
+            let stranger = DeviceKey::from_seed_for_tests("adopt-stranger", "laptop");
+            let stranger_refused = match Client::bind(None, Some(stranger), false).await {
+                Ok(sc) => {
+                    let r = matches!(
+                        sc.rpc(&addr, &did, Request::Adopt(buf.clone())).await,
+                        Ok(Response::Error(RpcError::Denied))
+                    );
+                    sc.close().await;
+                    r
+                }
+                Err(e) => {
+                    println!("adopt: could not bind a stranger: {e}");
+                    false
+                }
+            };
+            println!("adopt: stranger presenting the same record refused = {stranger_refused}");
+
+            // An older roster version is how revocation works: once the owner
+            // rotates, the device must not accept the superseded record.
+            let stale = AdoptionFields {
+                roster_version: 2,
+                ..fields
+            };
+            let mut sbuf = vec![0u8; 1024];
+            let sn = stale.sign_into(&key, &mut sbuf).unwrap_or(0);
+            sbuf.truncate(sn);
+            let stale_refused = sn > 0
+                && matches!(
+                    client.rpc(&addr, &did, Request::Adopt(sbuf)).await,
+                    Ok(Response::Error(RpcError::Denied))
+                );
+            println!("adopt: an older roster version refused = {stale_refused}");
+
+            // And the consequence: being the owner is worth something.
+            let owner_reads = matches!(
+                client.rpc(&addr, &did, Request::Telemetry).await,
+                Ok(Response::Telemetry(_))
+            );
+            println!("adopt: the owner may read telemetry = {owner_reads}");
+
+            let ok = accepted && stranger_refused && stale_refused && owner_reads;
+            println!(
+                "ADOPT {} adopted={accepted} stranger_refused={stranger_refused} stale_refused={stale_refused} owner_reads={owner_reads}",
+                if ok { "ok" } else { "fail" }
+            );
         }
         other => eprintln!("unknown op {other}"),
     }
