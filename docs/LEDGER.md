@@ -511,3 +511,35 @@ needs mata-master's own lockfile to resolve (a fresh resolve picks release
 candidates around `ed25519-dalek 3.0.0-pre.1` that no longer compile), and
 `Endpoint::builder` takes a preset. The crate declares its own `[workspace]`,
 so it never puts a second iroh major in this repo's graph.
+
+### The advertisement cost the media path its memory (2026-09-11)
+
+C2's trip after the device gained mDNS: the laptop **listed** the device —
+`192.168.71.1` answered a PTR question for `_mata-oem-sidecar._tcp.local` with
+`kind=oem_sidecar` and the model in it, which is N4's first half measured from
+the client rather than asserted from the board's log — and then received **0
+media packets** where the same cell had delivered 721 an hour earlier.
+
+The client returned after **36 s** of a 60 s subscription. That is a handshake
+plus a 30 s QUIC idle timeout, which is what a connection carrying no traffic
+does, so the board sent nothing. The board could not say so: its periodic line
+counted frames the *sketch* pushed and never packets the *node* sent. It does
+now, with the free heap beside them, and the first boot with that line said:
+
+| | free internal heap |
+|---|---|
+| the tier the generator had been emitting | **21,815 B** |
+| J3's mesh tier (`SPIRAM_MALLOC_ALWAYSINTERNAL=0`, stacks allowed external, static Wi-Fi TX buffers) | **59,263 B** |
+
+Same board, same cell, one variable: **+37,448 bytes, 2.7×**. A tokio blocking
+thread — which is how the node runs a media source that blocks — takes 8 KB of
+internal stack before any QUIC send buffer, and 21.8 KB is not room for that
+plus a camera plus a SoftAP.
+
+**What is proven and what is not.** Proven: media worked before the
+advertisement, free internal heap was 21,815 B after it, and the tier change
+raises that to 59,263 B. **Not proven: that the shortage is what stopped the
+media.** No subscriber has run against the new tier — that is a trip, and
+until it runs this is a plausible cause with a measured mechanism, not a
+diagnosis. If media returns, the row is the pair of heap numbers above; if it
+does not, the `sent` and `send-errors` counters now say which way to look.
