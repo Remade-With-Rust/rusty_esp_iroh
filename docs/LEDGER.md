@@ -449,3 +449,37 @@ signatures, and its own upgrade plan already schedules `iroh 0.97→1.1 last`.
 Running two endpoints in one process is the thing that repo has already been
 bitten by and wrote down — a first-call-wins global node, one advertised
 `iroh_node_id`, and one secret-key file.
+
+### The device publishes itself (2026-09-11, N4's first half on the board)
+
+A generated mesh cell advertised nothing and was reachable only by a ticket
+someone already held. It now publishes the OEM sidecar's own service, so a
+home computer needs no change to list it. On the XIAO, third line after the
+endpoint:
+
+```
+I (3245) esp_idf_svc::mdns: Initializing MDNS
+I (3254) rusty_esp_iroh_esp::idf: mdns: mesh-cam.local _mata-oem-sidecar._tcp port 60520 with 14 TXT keys
+```
+
+The hostname is the model's last segment as a DNS label, the port is the iroh
+UDP port (the one the ticket also carries, and it is new every boot), and the
+TXT record is `Node::sidecar_txt`. Cost: the app grew 4,655,136 → **4,691,632
+bytes**, +36,496 for the IDF mDNS component, 74.5 % of the 6 MiB factory.
+
+Three pieces, because the facade cannot call ESP-IDF and the sketch has no
+`Node`: `advertise_parts` here takes the record and the port instead of a
+`Node` (`advertise_sidecar` is now the Node convenience over it); the facade
+sends the TXT record back from the mesh thread the way it already sends the
+DID, the ticket and the port, and advertises on the caller's thread so one
+thread still owns the board; the generator compiles `espressif/mdns` in and
+emits the board's answer.
+
+**What this is not.** The board saying it published is a self-metric. The row
+N4 wants is a client hearing it, and the runner now browses for the service
+from the laptop — one hand-built PTR question, the answer read off the wire,
+because Windows PowerShell has no mDNS browser. The instrument was proven
+both ways on the home network first: **12 datagrams from four responders** to
+the meta-query every responder answers, and **0** for
+`_mata-oem-sidecar._tcp.local`, which is the negative control. The trip is
+what turns this into a row.
