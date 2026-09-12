@@ -241,7 +241,7 @@ pub mod idf {
         instance: &str,
         service_type: &str,
         port: u16,
-        txt: &[(alloc::string::String, alloc::string::String)],
+        txt: &[(String, String)],
     ) -> Result<EspMdns, EspError> {
         let mut mdns = EspMdns::take()?;
         mdns.set_hostname(hostname)?;
