@@ -483,3 +483,31 @@ both ways on the home network first: **12 datagrams from four responders** to
 the meta-query every responder answers, and **0** for
 `_mata-oem-sidecar._tcp.local`, which is the negative control. The trip is
 what turns this into a row.
+
+### The iroh version skew does not block the dial (measured 2026-09-11)
+
+"Blocked on the iroh 0.97-versus-1.1 skew" had been written into plans as
+though it were a finding. It was an assumption, and nobody in either
+repository had tested it. Method line: `client=iroh-0.97.0
+server=rusty_esp_iroh-host-on-iroh-1.1 link=loopback relay=none
+preset=N0DisableRelay resolution=mata-master-Cargo.lock`.
+
+| what a 0.97 client asked a 1.1 Janus node | what came back |
+|---|---|
+| `janus/echo/1` | connected **3.3 ms**, round trip **4.1 ms**, reply byte-identical — **and the node's own counter went `echo=0` → `echo=1`** |
+| `mata-oem-sidecar/rpc/1` `{"op":"ping"}` | `{"ok":true,"body":{"ping":"mata-oem-sidecar-ok"}}`, the contract's own reply, in 3.3 ms |
+| `mata-oem-sidecar/rpc/1` `{"op":"janusManifest"}` | `{"ok":true,"body":{"did":"did:mata:bihZ…","domain":"janus-manifest-v1","manifest_hex":"…"}}` in 2.3 ms |
+| a greeting instead of JSON | `{"ok":false,"error":"malformed RpcRequest…"}` — the application rejecting a payload, which is the transport working |
+
+So a home computer on iroh 0.97 can reach a Janus device on 1.1, negotiate
+both ALPNs, and speak the sidecar contract including the signed manifest.
+
+**What it does not say.** Loopback, with the address taken from a ticket: no
+Wi-Fi link, no relay, no discovery, and not the chip. Dialling the board over
+its own access point is an offline trip and has not been run. Two cargo traps
+are recorded with the probe, which is vendored at
+`rusty_esp_iroh/tools/iroh097-probe` so the result stays checkable: iroh 0.97
+needs mata-master's own lockfile to resolve (a fresh resolve picks release
+candidates around `ed25519-dalek 3.0.0-pre.1` that no longer compile), and
+`Endpoint::builder` takes a preset. The crate declares its own `[workspace]`,
+so it never puts a second iroh major in this repo's graph.

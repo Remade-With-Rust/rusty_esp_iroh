@@ -1,0 +1,31 @@
+# A throwaway: can an iroh 0.97 client dial an iroh 1.1 Janus node?
+#
+# Janus pins iroh 1.1. mata-master's lockfile resolves iroh 0.97.0 across
+# eight packages, and its pair client is what would dial a Janus device. As
+# of 2026-09-11 nobody in either repository had tried it -- it was an
+# assumption gating a whole workstream. This settles it with a measurement.
+#
+# The ticket parser is `rusty_esp_iroh-core`, which has no iroh dependency at
+# all, so this crate can read a Janus ticket and then speak 0.97 to it.
+[package]
+name = "iroh097-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+iroh = "0.97"
+rusty_esp_iroh-core = { path = "../../crates/rusty_esp_iroh-core", default-features = false, features = ["std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+[[bin]]
+name = "probe"
+path = "src/main.rs"
+
+[workspace]
+
+# iroh 0.97's tree resolves `ed25519-dalek 3.0.0-pre.1` here, which does not
+# compile against the `ed25519`/`pkcs8` it also picks. mata-master builds
+# iroh 0.97 daily on the versions below, so this is its resolution, not a
+# guess: the probe must fail or succeed on the transport, never on a
+# pre-release that a real 0.97 consumer never sees.
