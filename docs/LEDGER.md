@@ -697,3 +697,65 @@ five samples** — 100 seconds with no change. The whole-run slope is −1,876
 B/hour and the second-half slope −362 B/hour, and both are the tail of that
 settling rather than a leak. Not the row as written, and recorded as what it
 is: twelve minutes, flat at the end.
+
+### N4: a device adopted on silicon (2026-09-12, 08:47)
+
+The row reads "the pair client lists the device over mDNS and adopts it". Both
+halves are now measured, on the XIAO, over a network the board hosts itself.
+Method line: `board=xiao-esp32s3-sense cell=C2 radio=softap-wpa2
+owner=deterministic-bench-key oracle=device-sidecar-status
+self_metric=client-verdict`.
+
+| what adoption has to survive | result |
+|---|---|
+| the owner adopts | **accepted**, roster_version 3 |
+| **a stranger presenting the owner's own record** | **refused** — the record is public once sent, and only the key named inside it may use it |
+| **an older roster version** | **refused** — this is what revocation by rotation means |
+| the owner reads telemetry afterwards | **yes** |
+| the device's own account of itself | `pair_state=paired` in its sidecar status |
+
+Device `did:mata:29qcqKb5kMT529GSNgfcUU2gSf4bpd7EWUDEj2Mq7cb9J`, the identity
+this board has carried since 2026-09-08, now owned by
+`did:mata:212HLw3kvFRjaKN8edYhbcj5JKF53ZbcJ6J9yLg6Sh17N` — **a deterministic
+bench key, not a person.** The command says so in its own output, and the
+device keeps it.
+
+Media reproduced a third time in the same trip from a cold boot: **721
+packets, 0 lost, 0 reordered, 12.017/s**; the service listing passed a fourth
+time. Neither was disturbed by adoption, which runs last for that reason.
+
+### And a defect adoption exposed: the advertisement does not follow the pin
+
+`the record it advertises after adoption says paired: **False**`. The device
+reports `paired` when asked directly and keeps advertising `pair_state=open`,
+because the mDNS record is published once at boot and never revisited. A home
+computer browsing for devices would list an owned device as free to claim,
+which is the one thing that record exists to say.
+
+Not yet fixed, deliberately: the fix touches the mDNS handle the board holds,
+and rushing it after a green trip is how the last three defects were made.
+Written down with the numbers instead.
+
+### The board's send rate needs an interval that is fully inside the subscription
+
+The same trip read `board 10.853/s vs laptop 12.017/s -- 10.73 % apart` and it
+was the comparison that was wrong, not the board. The rate was taken from the
+first board line with `sent > 0` to the last, and both straddle an edge: the
+subscription starts inside the first interval and ends inside the last, so
+each counts wall time the board was not sending. The four lines say it plainly:
+
+| board uptime | sent | interval rate |
+|---|---|---|
+| 26.8 s | 0 | — |
+| 51.8 s | 179 | begins before the subscription |
+| 76.8 s | 479 | **12.000 /s — fully inside** |
+| 101.8 s | 722 | ends after the subscription stopped |
+
+**12.000/s against the laptop's 12.017/s is 0.14 % apart.** The runner now uses
+only intervals fully inside the subscription, and says there is no clean window
+rather than quoting one that includes dead time.
+
+Free internal heap: 72,915 B at rest, **53,827 B at its lowest** — this trip
+put the media path's cost at **19,088 bytes**, against 17,000 measured the
+night before, the difference being adoption's own work. Both are far above the
+21,815 B that the old memory tier left free, which is why media died there.
