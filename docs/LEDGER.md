@@ -379,3 +379,37 @@ compares endpoint ids and reads the ticket off the live capture.
 Nothing has received this media yet. The board's 12 frames/s is its own
 counter, and the row that turns it into a measurement is the trip: a laptop on
 the board's access point, dialling the ticket, counting what arrives.
+
+### C2's trip: a subscriber on the board's own network (2026-09-11)
+
+The laptop joined the network the board hosts, dialled the ticket that boot
+printed, and subscribed for 60 s. Method line: `board=xiao-esp32s3-sense
+cell=C2 radio=softap-wpa2 client=killer-be200-802.11n link=802.11n-ch1
+oracle=iroh-client-sequence-accounting self_metric=board-mesh-counter`.
+
+| | laptop | board |
+|---|---|---|
+| media | **721 packets received, 0 lost, 0 reordered**, 3,042,730 bytes, **12.017/s** | `mesh: 1 subscribers` — the counter went 300 → 600 → 900 frames pushed across the trip |
+| frame rate | receiver 11.9 fps by its own wall clock; **12.01 fps from the board's timestamps** | 12.000 fps measured at boot (300 frames per 25.000 s), cell cap 12 |
+| frames | largest 10,428 B, mean 4,220 B | — |
+| throughput | 0.406 Mbit/s | — |
+| connect and echo | **10/10 answered**, min 549.56 / median 556.218 / max 563.082 ms | — |
+
+**Both ends agree to one frame.** The board pushes at 12.000 frames/s, so 60 s
+is 720 frames; the laptop counted 721 packets, and the extra one is the frame
+already sitting in the slot when the subscription opened. Nothing was lost and
+nothing arrived out of order, over Wi-Fi, with the board acting as the access
+point and the media going out as QUIC streams because a 4 KB frame does not
+fit a datagram.
+
+**What the echo number is not.** All ten calls are cold: the host client opens
+a fresh connection per call and the runner spends a fresh process per call, so
+each figure is a full QUIC and TLS handshake with a 240 MHz chip doing the
+crypto, plus one round trip. It is what a caller waits for when it arrives
+cold, and it is not an RTT. A warm number needs a client that holds the
+connection open, which the host API does not expose today. Recorded as a gap.
+
+**C2 is Verified.** The one thing the row does not carry is "into a home
+computer": the subscriber was `rusty_esp_iroh-host`'s own client on a laptop,
+because mata-master waits on the iroh 0.97-versus-1.1 skew. The device half is
+the whole of what a board can prove alone, and this is it.
