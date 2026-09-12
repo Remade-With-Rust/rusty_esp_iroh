@@ -335,3 +335,47 @@ name-constraint corner cases of the relay's TLS path, where the peer is an
 iroh relay we choose; the trade is not ours to make silently. It flips the
 day n0 (or upstream) ships algorithm features on the stable crate
 generation, or the family moves to 0.14 as a whole.
+
+## iroh's first boot on silicon from a generated cell (C2, XIAO, 2026-09-11)
+
+`espino make` generated the C2 project from a nine-line `make.toml` — `mesh`
+beside `wifi-sta`, `camera-ov2640`, `mesh-media`, `access_point = true` — and
+the image it built did not boot. Three defects, in the order the board found
+them, none of which a host build can show. Method line: `board=xiao-esp32s3-sense
+cell=C2 idf=5.5.1 toolchain=esp-1.97.0.0 profile=z/no-lto radio=softap-wpa2
+self_metric=board-banner oracle=none-yet`.
+
+| what stopped it | why | what fixed it |
+|---|---|---|
+| `rustc-LLVM ERROR: Cannot select: XtensaISD::PCREL_WRAPPER` | rustls' `NewSessionTicketExtensions::read` at `opt-level = "s"`, and again under fat LTO | the generator emits J3's profile for a mesh cell on an Xtensa chip: `z`, `lto = false`, rustls at `z` (`0b5095d`) |
+| `E (1833) i2c: CONFLICT! driver_ng is not allowed to be used with this old driver`, then `abort()` at 1.8 s | that profile has no LTO, so esp-idf-hal's unused legacy-i2c calls reach the linker; it extracts the legacy object to satisfy them, garbage-collects the functions, and keeps the object's `__attribute__((constructor))`, which aborts when the new driver is linked — and the camera's SCCB is the new driver in IDF 5.5 | `CONFIG_I2C_SKIP_LEGACY_CONFLICT_CHECK=y`, emitted for exactly that profile (`c605685`). **`nm` on the ELF finds the constructor and not one legacy i2c function**: the check was protecting nothing |
+| `mesh: runtime: Permission denied (os error 13)` | `EACCES` out of ESP-IDF's `eventfd()` (`components/vfs/vfs_eventfd.c:409`), which it returns when no eventfd VFS is registered — and tokio's I/O driver opens one for every runtime it builds | a `Board::prepare_async` seam the sketch answers with this package's `register_eventfd` (`bea02ad`, `7e2e334`) |
+
+A fourth was found by the same fix and never reached the board: the facade's
+mesh thread ran on ESP-IDF's 8 KiB default pthread stack. It asks for 114,688
+bytes now — J3's number — and only on ESP-IDF, because that number overflowed
+the thread on the laptop, where the node has always had the platform's 2 MiB.
+
+What the board then printed, twice, from a cold boot:
+
+| | |
+|---|---|
+| identity | `did:mata:29qcqKb5kMT529GSNgfcUU2gSf4bpd7EWUDEj2Mq7cb9J` — the same DID this board has carried since 2026-09-08, through every reflash |
+| endpoint | `iroh::endpoint: endpoint; id=cb29bdc9a2` at 3.2 s, **the same id on the second boot**: the endpoint key persisted |
+| ticket | 138 characters, printed at 3.3 s |
+| media | `mesh: 0 subscribers, 300 frames, 0 blocks` at 26.8 s and 600 at 51.8 s — **12.000 frames/s** into the mesh against the cell's `fps = 12` cap, with nobody subscribed |
+| image | 4,655,104 bytes of app, 73.9 % of the 6 MiB factory partition |
+
+### The adoption ticket is not stable across boots, and that is correct
+
+The two boots printed two different tickets — 123 of 138 characters shared,
+the tail different — while the endpoint id was identical. The ticket carries
+the address the node answers on as well as its key, and iroh binds a fresh UDP
+port each boot. So **the endpoint id is the "key persisted" test; the ticket is
+not**, and a ticket is only good for the boot that printed it. The runner
+asserted the wrong one and dialled with a ticket two resets old; it now
+compares endpoint ids and reads the ticket off the live capture.
+
+Nothing has received this media yet. The board's 12 frames/s is its own
+counter, and the row that turns it into a measurement is the trip: a laptop on
+the board's access point, dialling the ticket, counting what arrives.
