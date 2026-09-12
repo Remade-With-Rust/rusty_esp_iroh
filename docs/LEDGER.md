@@ -639,3 +639,61 @@ The quieter transport shows in the echo too: the median fell from 556.2 ms to
 of "into a home computer" is adoption: the node answers `Request::Adopt`, but
 the host client exposes no method for it and the example has no such op, so no
 laptop has adopted a device on silicon yet.
+
+### Media reproduced, adoption missed the trip (2026-09-12)
+
+The trip with `-Adopt`: **mdns-listed passed for the third time**, echo 10/10
+at a 521 ms median, and **media 721 packets in 60 s, 0 lost, 0 reordered,
+12.017/s** — the same numbers as the night before, from a cold boot, which is
+the reproduction that makes the C2 row a measurement rather than an event.
+
+Adoption did not run. The client answered `unknown op adopt`: the runner uses
+a copy at `C:/janus-i`, and the adopt op had been built into the repository's
+own target directory. A day-old binary, and the laptop was already dark when
+it said so.
+
+Three things came out of that, in the order they bit:
+
+1. **The client can say what it can do.** `ops` lists its verbs and answers
+   before the ticket is parsed, because asking a program what it can do must
+   not require a device to ask it about.
+2. **The pre-flight checks capability, not existence.** It asks the client for
+   its ops and refuses by name when one the run needs is missing — `adopt`
+   only when `-Adopt` was passed. Both arms were run: a stale client is
+   refused by name, the current one passes naming what it needs.
+3. **Two old traps, both re-learned.** The probe had to go through `cmd /c`
+   like every ffmpeg call here, because PowerShell 5.1 turns a native
+   command's stderr into ErrorRecords whether you merge it with `2>&1` or send
+   it to a file with `2>`, and under `Stop` that throws — on exactly the case
+   worth catching, killing the run with an empty message. And the missing-op
+   test compared with a word-boundary regex whose backslash arrived as a
+   **literal backspace** through two layers of quoting, so it matched nothing
+   and called a good client useless. It compares against the list now.
+
+**Adoption itself is proven, on this laptop.** Against a local node: adopted at
+roster_version 3, a stranger presenting the same record refused, an older
+roster version refused, the owner may read telemetry, and the device then
+reports itself `paired` in its own sidecar status. What is missing is the same
+thing on silicon, which is one trip.
+
+### The heap after twelve minutes (2026-09-12)
+
+The soak the row asks for is an hour; what ran was twelve minutes, because the
+monitor returns cleanly at about 720 s whatever `--timeout` says. There is no
+clamp in the CLI's own parsing, so the cause is further in and is not yet
+found. **A monitor that silently ignores the duration it was given is worth
+fixing before a longer soak depends on it.**
+
+What the twelve minutes say, 28 samples, 12.000 fps sustained, no warnings:
+
+| board uptime | free internal |
+|---|---|
+| 27 s | 73,207 B |
+| 4 min | 72,767 B |
+| 11.7 min | 72,767 B |
+
+It fell 440 bytes over four minutes and then went **bit-identical for the last
+five samples** — 100 seconds with no change. The whole-run slope is −1,876
+B/hour and the second-half slope −362 B/hour, and both are the tail of that
+settling rather than a leak. Not the row as written, and recorded as what it
+is: twelve minutes, flat at the end.
