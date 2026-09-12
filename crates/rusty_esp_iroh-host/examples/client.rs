@@ -48,6 +48,14 @@ async fn main() {
     let mut args = std::env::args().skip(1);
     let ticket_text = args.next().expect("ticket");
     let op = args.next().unwrap_or_else(|| "ping".to_string());
+    // Before the ticket is parsed, because asking a binary what it can do
+    // must not require a device to ask it about.
+    if op == "ops" || ticket_text == "ops" {
+        println!(
+            "ops: echo ping manifest ticket telemetry sidecar neighbours time ota media adopt ops"
+        );
+        return;
+    }
     let ticket = Ticket::parse_text(&ticket_text).expect("valid janus1 ticket");
     let addr = endpoint_addr(&ticket).expect("addr");
     let device_did = ticket
