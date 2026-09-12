@@ -601,3 +601,41 @@ together.
 the device's contract, not incidental output, and a log level is a load-bearing
 decision. The generated sketch's own banner lines are safe; a dependency's are
 borrowed, and this one should eventually be the sketch's to print.
+
+### N4's first half, and the media row with both ends (2026-09-11, 22:13)
+
+The trip that closes the evening. Method line: `board=xiao-esp32s3-sense
+sketch=janus/mesh-cam outputs=mesh-media radio=softap-wpa2 ssid=janus-cam
+listen_secs=60` — written after the board named itself, from what the banner
+and the passes found.
+
+| | laptop | board |
+|---|---|---|
+| **listed** | `192.168.71.1` answered a PTR question for `_mata-oem-sidecar._tcp.local`, `kind=oem_sidecar`, and the model in the record | `mdns: mesh-cam.local … 14 TXT keys` |
+| connect and echo | **10/10**, min 507.0 / median 520.1 / max 524.5 ms, each a cold QUIC handshake | — |
+| media, 60 s | **720 packets, 0 lost, 0 reordered**, 3,163,559 B, largest 10,578 B, source 12.01 fps from the board's timestamps | `1 subscribers (1 at the node)`, **0 send-errors** |
+| media, as rates | **12.000 /s** | **12.040 /s** over 25 s of its own uptime — **0.33 % apart** |
+
+**Rates, not totals.** The board prints every 300 frames, so its last line
+lands before the subscription ends; comparing the totals read "-232
+unaccounted" on a trip where nothing was lost. The serial line already carries
+the board's uptime in its `I (nnnnn)` prefix, so the runner computes the rate
+from that and says plainly that the totals cover different windows.
+
+**The mechanism, quantified.** Free internal heap across this run: **72,915 B
+at rest, 55,915 B at its lowest** — the media path costs **17,000 bytes of
+internal RAM**. The tier that killed it left **21,815 B** free. 17,000 of
+21,815 is what a media subscription would have had to fit into, with
+fragmentation, beside a camera and a SoftAP; it did not, the node accepted the
+subscription and sent nothing, and the subscriber's connection idled out. That
+is no longer a plausible cause with a measured mechanism — it is the diagnosis,
+and the arithmetic is here.
+
+The quieter transport shows in the echo too: the median fell from 556.2 ms to
+**520.1 ms**, and the whole trip's serial capture is 171 lines with **zero**
+`poll_send` in it, against 418 lines of which 191 were `poll_send` before.
+
+**C2's device half is complete and N4's first half is measured.** What remains
+of "into a home computer" is adoption: the node answers `Request::Adopt`, but
+the host client exposes no method for it and the example has no such op, so no
+laptop has adopted a device on silicon yet.
