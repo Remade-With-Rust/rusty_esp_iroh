@@ -543,3 +543,39 @@ media.** No subscriber has run against the new tier — that is a trip, and
 until it runs this is a plausible cause with a measured mechanism, not a
 diagnosis. If media returns, the row is the pair of heap numbers above; if it
 does not, the `sent` and `send-errors` counters now say which way to look.
+
+### The tier that crashed, and the one that did not (2026-09-11)
+
+Taking J3's memory tier wholesale — four settings at once — crashed the board
+under load: `Guru Meditation Error: Core 1 panic'ed (LoadProhibited)`,
+`EXCVADDR 0x00000000`, a ROM copy from a **null source** into a PSRAM
+destination, in the send path mid-echo. The trip read `echo 8/10` and no media
+summary at all, both downstream of the reboot. Changing four things at once is
+what made it unattributable, so two came out:
+
+| setting | kept? | why |
+|---|---|---|
+| `SPIRAM_MALLOC_ALWAYSINTERNAL=0` | **kept** | the whole of the benefit, and it falls back to internal whenever a caller asks for DMA or internal caps |
+| `SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y` | **out** | task stacks in PSRAM cannot be used while the cache is disabled; J3 had no camera and no DMA-heavy ISRs beside it |
+| `ESP_WIFI_STATIC_TX_BUFFER_NUM=8` | **out** | it replaced 64 dynamic TX buffers on a cell that streams a camera, and the fault was in the send path |
+| `MDNS_MAX_SERVICES` 10 → 4 | kept | a Janus device publishes one |
+
+And one defect the crash log exposed on the way: **iroh logs every packet it
+sends at INFO**, and ESP-IDF's logger writes to the UART synchronously. 191 of
+418 serial lines on that trip were `poll_send`, one per packet, while the
+media path was trying to run. A mesh cell now quiets the transport targets
+through `esp_log_level_set` — the sketch's own lines stay, because the runner
+reads the banner and the counters off them.
+
+Free internal heap, same board, same cell, at the 300-frame mark:
+
+| | free internal |
+|---|---|
+| the tier the generator had been emitting | 21,815 B |
+| J3's full tier (crashed under load) | 59,263 B |
+| the allocator preference alone, plus a quiet transport | **73,119 B** |
+
+**3.35× the starting point without either dangerous setting** — and the second
+row says the two that came out were contributing nothing anyway. Whether this
+is what the media path needed is still the next trip's question: idle proves
+nothing, because the crash only happened under load.
