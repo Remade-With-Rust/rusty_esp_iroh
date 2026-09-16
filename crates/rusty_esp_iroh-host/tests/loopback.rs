@@ -301,3 +301,35 @@ async fn echo_rpc_adoption_sidecar_and_media_over_loopback() {
     stranger_client.close().await;
     node.shutdown().await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn garbage_on_every_alpn_and_a_flood_leave_the_node_answering() {
+    // The parsers have their no-panic gate; this is the node's stream
+    // handlers under the same abuse, over real QUIC. Nothing here asserts
+    // what became of the garbage -- refused, dropped or answered are all
+    // fine -- only that the node is still there afterwards.
+    let (node, ticket) = start_node().await;
+    let addr = endpoint_addr(&ticket).unwrap();
+    let client = Client::bind(None, None, false).await.unwrap();
+
+    let r = client.garbage(&addr, 8, 7).await;
+    assert_eq!(r.per_alpn.len(), 5, "{r:?}");
+    assert_eq!(r.sent(), 40, "{r:?}");
+    assert_eq!(r.datagrams, 3, "{r:?}");
+    assert!(
+        matches!(client.rpc_anonymous(&addr, Request::Ping).await, Ok(Response::Pong)),
+        "the node answers after garbage on every ALPN"
+    );
+
+    // Four subscriptions at once, each its own connection, all served.
+    let f = client.flood(&addr, 4, Duration::from_millis(300)).await;
+    assert_eq!(f, rusty_esp_iroh_host::client::FloodReport { ok: 4, failed: 0 });
+    assert!(
+        matches!(client.rpc_anonymous(&addr, Request::Ping).await, Ok(Response::Pong)),
+        "the node answers after a flood"
+    );
+    assert!(node.state().counters.media_subscribers.load(std::sync::atomic::Ordering::Relaxed) >= 4);
+
+    client.close().await;
+    node.shutdown().await;
+}

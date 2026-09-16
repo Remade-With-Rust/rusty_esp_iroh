@@ -52,7 +52,7 @@ async fn main() {
     // must not require a device to ask it about.
     if op == "ops" || ticket_text == "ops" {
         println!(
-            "ops: echo ping manifest ticket telemetry sidecar neighbours time ota media adopt ops"
+            "ops: echo ping manifest ticket telemetry sidecar neighbours time ota media adopt garbage flood ops"
         );
         return;
     }
@@ -248,6 +248,57 @@ async fn main() {
                     source_span
                 );
             }
+        }
+        "garbage" => {
+            // client <ticket> garbage [rounds]: random bytes on every ALPN
+            // (eight shapes a round) and garbage datagrams, then a ping --
+            // which is the only verdict.
+            let rounds: u32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(8);
+            let r = client.garbage(&addr, rounds, 0x6A61_6E75_7300).await;
+            let ping = matches!(
+                client.rpc_anonymous(&addr, Request::Ping).await,
+                Ok(Response::Pong)
+            );
+            for a in &r.per_alpn {
+                println!(
+                    "garbage: {} sent={} answered={} errors={}",
+                    a.alpn, a.sent, a.answered, a.errors
+                );
+            }
+            println!(
+                "GARBAGE alpns={} rounds={rounds} sent={} answered={} errors={} datagrams={} ping_after={ping}",
+                r.per_alpn.len(),
+                r.sent(),
+                r.answered(),
+                r.errors(),
+                r.datagrams
+            );
+        }
+        "flood" => {
+            // client <ticket> flood [max-level]: 1, 2, 4 .. concurrent media
+            // subscriptions, a ping after each level; stops at the first
+            // level with a failure or an unanswered ping.
+            let max: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(16);
+            let mut level = 1;
+            let mut max_ok = 0;
+            while level <= max {
+                let f = client.flood(&addr, level, Duration::from_secs(3)).await;
+                let ping = matches!(
+                    client.rpc_anonymous(&addr, Request::Ping).await,
+                    Ok(Response::Pong)
+                );
+                println!(
+                    "FLOOD level={level} ok={} failed={} ping_after={ping}",
+                    f.ok, f.failed
+                );
+                if f.failed == 0 && ping {
+                    max_ok = level;
+                } else {
+                    break;
+                }
+                level *= 2;
+            }
+            println!("FLOOD max_ok={max_ok}");
         }
         "adopt" => {
             // The device's own DID, from its signed manifest rather than from

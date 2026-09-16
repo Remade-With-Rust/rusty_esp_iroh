@@ -1,6 +1,9 @@
 //! The client: dial a Janus node by ticket and speak its four protocols.
 
 use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Poll;
 use std::time::Duration;
 
 use iroh::endpoint::Connection;
@@ -376,10 +379,199 @@ impl Client {
         Ok(counter)
     }
 
+    /// Bytes on one bi-stream of `alpn`, the whole reply back, nothing
+    /// encoded by this side: what an abuse test sends.
+    pub async fn send_raw(
+        &self,
+        addr: &EndpointAddr,
+        alpn: &[u8],
+        payload: &[u8],
+        max_reply: usize,
+    ) -> Result<Vec<u8>> {
+        self.round_trip(addr, alpn, payload, max_reply).await
+    }
+
+    /// Random bytes on every ALPN the node speaks: `rounds` streams per
+    /// ALPN cycling through eight shapes (empty; one byte; a length prefix
+    /// nothing could satisfy; one over the frame cap; one byte short of its
+    /// own prefix; 1,500 random; 64 KB random; a well-formed prefix with a
+    /// garbage body), then three garbage datagrams on a media connection.
+    /// The report says what became of each attempt -- answered, or refused
+    /// or dropped -- and neither is a verdict: whether the node still
+    /// answers is the caller's ping afterwards. `seed` fixes the bytes.
+    pub async fn garbage(&self, addr: &EndpointAddr, rounds: u32, seed: u64) -> GarbageReport {
+        let mut lcg = Lcg(seed | 1);
+        let mut report = GarbageReport::default();
+        for alpn in alpn::ALL {
+            let mut a = AlpnGarbage {
+                alpn: String::from_utf8_lossy(alpn).into_owned(),
+                ..AlpnGarbage::default()
+            };
+            for round in 0..rounds {
+                let payload = garbage_shape(round, &mut lcg);
+                a.sent += 1;
+                let attempt = tokio::time::timeout(
+                    GARBAGE_PATIENCE,
+                    self.round_trip(addr, alpn, &payload, alpn::MAX_MEDIA_PACKET),
+                )
+                .await;
+                match attempt {
+                    Ok(Ok(_)) => a.answered += 1,
+                    _ => a.errors += 1,
+                }
+            }
+            report.per_alpn.push(a);
+        }
+        if let Ok(conn) = self.connect(addr, alpn::MEDIA).await {
+            for _ in 0..3 {
+                let bytes = lcg.bytes(64);
+                if conn.send_datagram(bytes.into()).is_ok() {
+                    report.datagrams += 1;
+                }
+            }
+        }
+        report
+    }
+
+    /// `level` media subscriptions at once, each on its own connection,
+    /// each held for `hold`. `ok` counts the ones the node accepted and
+    /// served at least one packet; `failed` the rest. One level, measured;
+    /// the caller ramps and pings between levels, because where a board
+    /// stops is a number to find, not a limit to assume.
+    pub async fn flood(&self, addr: &EndpointAddr, level: usize, hold: Duration) -> FloodReport {
+        let sub = Subscribe {
+            codec: *b"any ",
+            max_fps: 0,
+            max_kbps: 0,
+        };
+        let futs: Vec<_> = (0..level)
+            .map(|_| Box::pin(self.subscribe(addr, &sub, u64::MAX, hold, |_, _| {})))
+            .collect();
+        let mut report = FloodReport::default();
+        for result in join_all(futs).await {
+            match result {
+                Ok(counter) if counter.received > 0 => report.ok += 1,
+                _ => report.failed += 1,
+            }
+        }
+        report
+    }
+
     /// Close the endpoint.
     pub async fn close(self) {
         self.endpoint.close().await;
     }
+}
+
+/// How long a garbage stream is given to be answered or dropped before it
+/// counts as dropped and the next one is sent.
+const GARBAGE_PATIENCE: Duration = Duration::from_secs(3);
+
+/// What one ALPN did with garbage.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AlpnGarbage {
+    /// The ALPN as text.
+    pub alpn: String,
+    /// Streams opened.
+    pub sent: u32,
+    /// Streams that got any reply before a clean end.
+    pub answered: u32,
+    /// Streams refused, reset, or left unanswered within the patience.
+    pub errors: u32,
+}
+
+/// What [`Client::garbage`] did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GarbageReport {
+    /// One entry per ALPN, in [`alpn::ALL`] order.
+    pub per_alpn: Vec<AlpnGarbage>,
+    /// Garbage datagrams sent on a media connection.
+    pub datagrams: u32,
+}
+
+impl GarbageReport {
+    /// Streams opened across every ALPN.
+    #[must_use]
+    pub fn sent(&self) -> u32 {
+        self.per_alpn.iter().map(|a| a.sent).sum()
+    }
+
+    /// Streams answered across every ALPN.
+    #[must_use]
+    pub fn answered(&self) -> u32 {
+        self.per_alpn.iter().map(|a| a.answered).sum()
+    }
+
+    /// Streams refused or dropped across every ALPN.
+    #[must_use]
+    pub fn errors(&self) -> u32 {
+        self.per_alpn.iter().map(|a| a.errors).sum()
+    }
+}
+
+/// What one level of [`Client::flood`] did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FloodReport {
+    /// Subscriptions accepted and served at least one packet.
+    pub ok: u32,
+    /// Subscriptions refused, timed out, or served nothing.
+    pub failed: u32,
+}
+
+/// A fixed-sequence generator, so a garbage run is the same bytes on every
+/// machine and a failure can be replayed.
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u32 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (self.0 >> 33) as u32
+    }
+
+    fn bytes(&mut self, n: usize) -> Vec<u8> {
+        (0..n).map(|_| self.next() as u8).collect()
+    }
+}
+
+/// The eight shapes of garbage, one per round modulo eight.
+fn garbage_shape(round: u32, lcg: &mut Lcg) -> Vec<u8> {
+    let with_prefix = |len: u32, body: Vec<u8>| {
+        let mut v = len.to_be_bytes().to_vec();
+        v.extend(body);
+        v
+    };
+    match round % 8 {
+        0 => Vec::new(),
+        1 => vec![lcg.next() as u8],
+        2 => with_prefix(u32::MAX, Vec::new()),
+        3 => with_prefix(alpn::MAX_RPC_FRAME as u32 + 1, lcg.bytes(8)),
+        4 => with_prefix(64, lcg.bytes(63)),
+        5 => lcg.bytes(1500),
+        6 => lcg.bytes(alpn::MAX_RPC_FRAME + 64),
+        _ => with_prefix(8, lcg.bytes(8)),
+    }
+}
+
+/// Every future to completion, on one task, no extra crate.
+async fn join_all<F: Future + Unpin>(mut futs: Vec<F>) -> Vec<F::Output> {
+    let mut out: Vec<Option<F::Output>> = (0..futs.len()).map(|_| None).collect();
+    std::future::poll_fn(|cx| {
+        let mut pending = false;
+        for (slot, fut) in out.iter_mut().zip(futs.iter_mut()) {
+            if slot.is_none() {
+                match Pin::new(fut).poll(cx) {
+                    Poll::Ready(v) => *slot = Some(v),
+                    Poll::Pending => pending = true,
+                }
+            }
+        }
+        if pending { Poll::Pending } else { Poll::Ready(()) }
+    })
+    .await;
+    out.into_iter().flatten().collect()
 }
 
 /// What the device said to an update.
