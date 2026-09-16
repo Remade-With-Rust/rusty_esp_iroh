@@ -759,3 +759,73 @@ Free internal heap: 72,915 B at rest, **53,827 B at its lowest** — this trip
 put the media path's cost at **19,088 bytes**, against 17,000 measured the
 night before, the difference being adoption's own work. Both are far above the
 21,815 B that the old memory tier left free, which is why media died there.
+
+## The toolchain moved: Xtensa Rust 1.98.1.0 takes fat LTO (2026-09-16)
+
+The question the plan had carried since 2026-09-11 — does the next toolchain
+fix the LLVM crash in rustls (`Cannot select: XtensaISD::PCREL_WRAPPER`) —
+was asked of 1.98.1.0 (released 2026-09-08), installed side by side as
+`esp-198` with `espup install --name esp-198 --toolchain-version 1.98.1.0
+--targets esp32s3`; the `esp` toolchain stayed 1.97.0.0. The generated C2
+project was copied beside itself with its `Cargo.lock`, so only the toolchain
+and the profile changed, one variable per build:
+
+| toolchain / profile | `.flash.text` | `.flash.rodata` | flash total (+iram +data) | Δ vs shipping |
+|---|---:|---:|---:|---:|
+| 1.97.0.0 / `z` / no LTO (what ships) | 3,690,172 | 873,904 | 4,693,507 | — |
+| 1.98.1.0 / `s` / fat LTO — the crashing profile | 3,574,068 | 728,212 | 4,431,451 | −5.6 % |
+| **1.98.1.0 / `z` / fat LTO** | 3,143,000 | 742,500 | **4,014,687** | **−14.5 %** |
+| + `panic = "immediate-abort"` | 3,025,972 | 630,020 | 3,785,163 | −19.4 % |
+| + `tracing` capped at info | 3,025,676 | 630,020 | 3,784,867 | −19.4 % |
+
+Method: `xtensa-esp32s3-elf-size -A` on the linked ELF; totals are text +
+rodata + `.iram0.text` + `.dram0.data`, the four sections the app image
+carries. No `Cannot select` in any 1.98.1.0 build; the `s` + LTO build
+linked in 3 m 10 s from a cold target directory. Sizes are deterministic and
+needed no board; whether the LTO image *runs* is a separate row and waits on
+a boot.
+
+What was and was not taken:
+
+- **`z` + fat LTO is the generator's profile for a mesh cell on Xtensa from
+  1.98.1.0 on** (`espino make image --toolchain esp-198`; the version is read
+  off `rustc +name --version`, and an unnamed toolchain keeps the profile
+  that builds everywhere). 1.98.0.0 was never tried, so it is not claimed.
+- **`panic = "immediate-abort"` is not taken.** 229,524 B, but it erases
+  every panic message, and the runbook reads panics through the ELF. It is
+  the lever to pull when a fit demands it, behind
+  `cargo-features = ["panic-immediate-abort"]`.
+- **The tracing cap is not a lever here**: 296 B.
+
+### Why the size matters: two app slots
+
+The XIAO has 8 MB. After `nvs`, `phy_init`, `otadata`, a 116 KB filesystem
+and `identity` (kept last, so a reflash never touches the key), two
+64 KB-aligned app slots of **0x3e0000 = 4,063,232 B** each are what is left.
+The shipping image (4,693,507 B) fits neither; the LTO image (4,014,687 B)
+fits with 48,545 B to spare, before the OTA seams themselves are linked. That
+margin is thin and the composer checks it at every build (exit 3: does not
+fit), which is where `immediate-abort` waits.
+
+## Signed updates reach the facade (host, 2026-09-16)
+
+N5 built the whole mechanism — the manifest, the sink, the session, the
+owner-only RPC, the two-slot host model, `EspOtaSink` over `esp_ota_*` — and
+`rusty_esp_arduino` bound every node with `ota: None`, so an image was
+`Unsupported` however well it was signed. Two seams on `Board` close that:
+`ota_sink()` hands over the inactive slot (only asked for when the device has
+a maker to trust) and `ota_running_valid()` cancels the bootloader's pending
+rollback (called once the endpoint is up, so an image that boots but never
+reaches the mesh is the one the bootloader drops). The manifest promises
+`ota` only when both exist, and `mesh::last_ota()` is the sketch's cue to
+restart.
+
+| the facade's test, on the laptop board's two 1 MiB slots | result |
+|---|---|
+| a maker named at `identity::begin`, a slot from the board → `ota_running_valid` called exactly once, after the endpoint came up | pass |
+| the owner adopts, then pushes a maker-signed 40,000-byte image through the same client | `Committed { firmware: "1.5.0" }` |
+| the sketch reads the same string back through `mesh::last_ota()` on its next `service` | pass |
+
+The generated sketch's board answers `ota_sink` with `None` on a single-app
+table (`esp_ota_get_next_update_partition` is null there), so a device
+without a second slot never promises what it cannot take.
