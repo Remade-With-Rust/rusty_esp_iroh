@@ -829,3 +829,29 @@ restart.
 The generated sketch's board answers `ota_sink` with `None` on a single-app
 table (`esp_ota_get_next_update_partition` is null there), so a device
 without a second slot never promises what it cannot take.
+
+## Abuse over loopback: garbage on every ALPN, and a flood (host, 2026-09-16)
+
+The parsers have had their no-panic gate since 2026-09-02; this is the
+node's stream handlers under the same abuse over real QUIC, as two client
+ops the console, the CLI and a test all share. `Client::garbage` opens
+`rounds` streams per ALPN cycling eight shapes — empty; one byte; a length
+prefix nothing could satisfy (`0xFFFF_FFFF`); one over the frame cap; one
+byte short of its own prefix; 1,500 random bytes; 64 KB + 64 random bytes; a
+well-formed prefix with a garbage body — then three garbage datagrams on a
+media connection, from a fixed-sequence generator so a failure replays.
+`Client::flood` opens `level` media subscriptions at once, each on its own
+connection. Neither report is a verdict: the ping afterwards is.
+
+| over loopback | result |
+|---|---|
+| 40 garbage streams on 5 ALPNs (`echo`, `rpc`, `media`, `sidecar rpc`, `ota`) and 3 garbage datagrams, then `Ping` | `Pong` |
+| 4 subscriptions at once, 300 ms each | 4 served, 0 failed, then `Pong`; the node counted ≥ 4 subscribers |
+
+What this does not say: where the *board* stops. The node has no cap on
+subscribers today; a media subscription costs 17,000–19,088 B of internal
+RAM on the XIAO (measured 2026-09-11/12) against ~73,000 free, so a handful
+will exhaust it. The runner's `-Flood` pass ramps 1, 2, 4, 8, 16 with a ping
+between levels and, if the board restarts, waits for its banner and asks
+again — the row is the level it served and whether it came back by itself.
+A cap is designed from that number, not before it.
