@@ -1,118 +1,108 @@
 # rusty_esp_iroh
 
-[![crates.io](https://img.shields.io/crates/v/rusty_esp_iroh.svg)](https://crates.io/crates/rusty_esp_iroh)
-[![docs.rs](https://docs.rs/rusty_esp_iroh/badge.svg)](https://docs.rs/rusty_esp_iroh)
-[![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![Remade With Rust](https://img.shields.io/badge/Remade%20With-Rust-000?logo=rust&logoColor=fff)](https://github.com/remade-with-rust) [![By Mata Network](https://img.shields.io/badge/by-Mata%20Network-5b2be0)](https://www.mata.network) [![crates.io](https://img.shields.io/crates/v/rusty_esp_iroh.svg)](https://crates.io/crates/rusty_esp_iroh) [![docs.rs](https://docs.rs/rusty_esp_iroh/badge.svg)](https://docs.rs/rusty_esp_iroh) [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/LICENSE-MIT)
 
-The MATA mesh on the chip: an iroh endpoint on ESP32 (std/ESP-IDF track), Janus ALPN protocols (rpc, media, telemetry), a host client, and a bridge that fronts no_std nodes on the mesh. Replaces cloud-IoT device SDKs.
+A peer-to-peer node on a microcontroller: QUIC with pure-Rust TLS, a signed
+capability manifest, media streaming, adoption, and signed over-the-air
+updates — on a part with half a megabyte of internal memory. Pure Rust, no C,
+no FFI.
 
-Part of **Janus**, the Remade-With-Rust programme that rebuilds the Espressif
-ESP32 and Arduino application portfolio in memory-safe Rust so hardware makers
-can ship products that plug straight into the MATA home computer.
+* **It runs on the chip, from a data file.** A nine-line manifest becomes a
+  firmware whose node is up **3.2 seconds after boot**, advertising itself on
+  the local network and streaming its camera to a subscriber.
+* **A camera over the mesh, with nothing lost.** Sixty seconds, **721 packets,
+  none lost, none out of order**, reproduced three times from cold boots — and
+  the board's own count agrees with the subscriber's to **0.14%**.
+* **Adopted, with both refusals holding.** A stranger presenting the owner's own
+  record is refused; a superseded record is refused; the owner then reads
+  private telemetry. Measured on silicon.
+* **It answers the contract a home computer already speaks**, so a device shows
+  up in the owner's app with no change at the other end.
 
-- This package's plan: [docs/plans/rusty_esp_iroh.md](docs/plans/rusty_esp_iroh.md)
-- The family plan: Janus `docs/plans/janus-mission.md` (umbrella repo)
+## What has run on hardware
 
-**Claims discipline:** this README makes no performance or capability claim that
-is not backed by a test, a benchmark ledger entry, or a kill test recorded in the
-plan. "Scaffold" means scaffold.
+Measured on a Seeed XIAO ESP32-S3 Sense, over a Wi-Fi network **the board
+hosts itself**, with both ends counting at once.
 
-## Status
+| what the trip asked | at the laptop | at the board |
+|---|---|---|
+| can anything **find** it? | a service query answered, carrying the tag that makes an owner's app render it as a device | publishes 14 record keys, for 36 KB of firmware |
+| does it **answer**? | ten connections of ten, **520 ms median** | — |
+| does the camera **arrive**? | **721 packets in 60 s, none lost, none reordered** | one subscriber, **zero send failures** |
+| do the ends **agree**? | 12.017 packets/s | 12.000/s — **0.14% apart** |
+| is the identity stable? | the same endpoint key before and after a whole-image reflash | — |
 
-**N0 shipped on the host (2026-09-01); N1 and N4 host halves done.** The
-Janus protocols are defined and tested in `no_std` (ALPNs, the `janus1…` QR
-ticket, the DID↔endpoint `Binding`, postcard RPC with mID assertions, media
-framing, the home computer's OEM-sidecar JSON), and a `Node` + `Client` over
-iroh 1.1 with pure-Rust TLS prove them end to end on one machine: an RPC
-without an assertion is refused, a stranger is denied, the owner adopts, media
-streams with zero loss. The XIAO ESP32-S3 Sense firmware builds (4.66 MB
-image, 2026-09-02); nothing has run on a chip yet. `docs/LEDGER.md` has every number.
+The connection figures are **not round-trip times**: every call opens a fresh
+encrypted connection from a fresh process, so each is a full handshake with a
+chip doing the cryptography. That is what a caller waits for on first contact
+and nothing faster.
 
-**N2 host half (2026-09-02):** real MJPEG over `janus/media/1` — a directory
-source and, behind the `mjpeg` feature, J1's HTTP stream republished by the
-node (the Pi-in-front-of-a-camera bridge); every subscriber's source on its
-own thread; the client writes frames to disk. One subscriber for a minute:
-591 frames written, every one byte-identical to its source
-file, 0 lost; two subscribers at once: 0 and
-0 lost; the HTTP bridge at 16.06 fps against the
-server's 16.05.
+**Three things only a board could say**, each now a rule with a test: the
+compiler crashes on the TLS library at two optimisation settings; without
+whole-program optimisation the linker drags in a retired bus driver's start-up
+check, which aborts the boot 1.8 seconds in while protecting nothing; and the
+async runtime cannot open the notification descriptor it needs until a driver
+is registered.
 
-**N5 and N3 host halves (2026-09-02):** OTA over `janus/ota/1` — a
-maker-signed image manifest, every check before a byte, the bytes into the
-inactive slot with the digest running, `esp-ota`'s two-slot rollback
-modelled on the host and written for the chip; a stranger, a bad signature,
-the wrong maker, chip or model, a tampered image and a power cut all leave
-the running image byte-identical. And `rusty_esp_iroh-bridge`: one
-endpoint fronting radio neighbours whose own signed manifests it relays
-verbatim and whose telemetry it attributes per packet.
+**Open defects, written down rather than hidden:** the device reports itself as
+owned when asked directly and goes on advertising itself as free to claim,
+because the broadcast record is composed once at start-up and never revisited.
+And a media subscription costs **19,088 bytes** of internal memory, which is
+why it fails outright on a memory configuration leaving under 22,000 free.
 
-**N4 software complete, N6 host half (2026-09-02):** `Client::manifest`
-(fetched, verified under the device DID, parsed) and the sidecar's
-`janusNeighbours`; and the C6 LAN-tier firmware project
-(`firmware/esp32-c6-idf-mesh`), which compiles: 4 575 232 B. The size ledger has every tier.
+Every number, with the run that produced it:
+[`docs/LEDGER.md`](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/docs/LEDGER.md).
 
-## What is in it
+## Using it
 
-| crate / module | what |
+```rust
+use rusty_esp_iroh_host::{Node, NodeConfig, NodeIdentity};
+
+let identity = NodeIdentity::load_or_create(&mut kv, &mut rng, "janus")?;
+let node = Node::bind_with(identity, kv, &manifest, Some(factory), config, extras).await?;
+println!("{}", node.ticket_text());   // hand this to a subscriber
+```
+
+## Two tracks
+
+| track | what it is | this crate |
+|---|---|---|
+| **A** | `std` on ESP-IDF — the only track a peer-to-peer node runs on, because it needs an async runtime and TLS | `rusty_esp_iroh-esp --features esp-idf` |
+| **B** | `no_std` on `esp-hal` — **a compile error by design**, with a message: a bare-metal chip reaches the mesh through the bridge, not by running a node | `rusty_esp_iroh-core`, default |
+
+## Part of Janus
+
+**Janus** rebuilds the Espressif ESP32 and Arduino application portfolio as
+independent, memory-safe Rust packages — so a hardware maker can ship a device
+that the [MATA](https://www.mata.network) home computer discovers, catalogs honestly, adopts
+under its own identity, and pays for. Ten packages, three layers, and the
+dependency direction never reverses.
+
+| layer | packages |
 |---|---|
-| `-core` `alpn` | `janus/echo/1`, `janus/rpc/1`, `janus/media/1`, `mata-oem-sidecar/rpc/1` |
-| `-core` `ticket` | the rendezvous ticket: endpoint id + DID + relay + addresses, `janus1…` base32 text for QR and serial, no heap |
-| `-core` `binding` | the device key's signature over its iroh `EndpointId` |
-| `-core` `assertion` | the caller's mID assertion (kms nonce-envelope shape) with replay window |
-| `-core` `rpc` | append-only `Request`/`Response`, length-prefixed postcard frames, the authorisation rule |
-| `-core` `media` | subscribe message, 24-byte packet header, loss counter |
-| `-core` `sidecar` | the home computer's existing JSON RPC and mDNS TXT record, answered by a device |
-| `-host` | `Node` (all four ALPNs), `Client`, `NodeIdentity` (both keys from the `Kv` seam), n0's QUIC crypto provider; `examples/{node,client}` |
-| `-esp` (`esp-idf`) | eventfd, SNTP, mDNS advertisement, NVS identity — the chip's glue around the std node |
-| `firmware/xiao-s3-sense-idf-mesh` | the J3 firmware |
+| **0 — the vocabulary** | [`rusty_esp_core`](https://crates.io/crates/rusty_esp_core) · [`rusty_esp_dsp`](https://crates.io/crates/rusty_esp_dsp) |
+| **1 — the functions** | [`rusty_esp_image`](https://crates.io/crates/rusty_esp_image) · [`rusty_esp_video`](https://crates.io/crates/rusty_esp_video) · [`rusty_esp_audio`](https://crates.io/crates/rusty_esp_audio) · [`rusty_esp_signal`](https://crates.io/crates/rusty_esp_signal) · [`rusty_esp_mid`](https://crates.io/crates/rusty_esp_mid) · [`rusty_esp_iroh`](https://crates.io/crates/rusty_esp_iroh) |
+| **2 — the surfaces** | [`rusty_esp_arduino`](https://crates.io/crates/rusty_esp_arduino) — the sketch facade · [`espino`](https://crates.io/crates/espino) — the maker's CLI |
 
-## What it is
+Every package is host-verified against an external oracle and keeps a ledger
+in which no number appears without the run that produced it. **Five of seven
+device profiles have now run their kill tests on real silicon**, three of them
+over a Wi-Fi network the board hosts itself.
 
-- A pure-Rust remake of the *application* layer Espressif ships in C for this
-  function. Same job, same protocols and file formats, new code, permissive
-  licence, `forbid(unsafe)` in the core.
-- Track-agnostic: the core crate is `no_std + alloc` and knows nothing about
-  ESP-IDF or `esp-hal`. Backends are thin and feature-gated.
+Also check out the rest of [Remade With Rust](https://github.com/remade-with-rust) — including
+[`rusty_alloc`](https://crates.io/crates/rusty_alloc), the pure-Rust rebuild of
+mimalloc that these firmwares run on, and
+[`rusty_jpeg`](https://crates.io/crates/rusty_jpeg), the JPEG engine behind the
+camera path — and our sister project
+[remade_ffmpeg_rs](https://github.com/Remade-With-Rust/remade_ffmpeg_rs), a ground-up Rust rebuild of FFmpeg.
 
-## What it is not
+## About Mata Network
 
-- Not a rewrite of the radio PHY, the ROM, or Espressif's Wi-Fi/BT controller
-  blob. Where the silicon must be touched, the `-esp` crate **wraps** the
-  esp-rs HAL or ESP-IDF and says so.
-- Not a fork of esp-hal, esp-radio, espflash or ESP-IDF. Those are dependencies.
-
-## Layout
-
-```text
-crates/rusty_esp_iroh          facade: re-exports + prelude; the crate you depend on
-crates/rusty_esp_iroh-core     no_std + alloc; forbid(unsafe); types, traits, algorithms
-crates/rusty_esp_iroh-esp      the WRAP crate: `esp-hal` (Track B) | `esp-idf` (Track A)
-firmware/                per-chip example projects, excluded from the workspace
-docs/plans/              the mission plan for this package
-```
-
-## Two tracks, one core
-
-| Track | Feature | Runtime | Use when |
-|---|---|---|---|
-| **A** | `esp-idf` | `std` on ESP-IDF (FreeRTOS) | you need iroh, TLS, or a driver ESP-IDF has and esp-hal lacks |
-| **B** | `esp-hal` | `no_std` + Embassy | the purity path; every driver upstream in esp-rs |
-
-The core compiles on both and on the host, which is where its tests run.
-
-## Build
-
-```sh
-cargo test --workspace                                   # host: the tests
-cargo check -p rusty_esp_iroh-core --no-default-features \
-  --target riscv32imac-unknown-none-elf                  # ESP32-C6 class, no alloc
-cargo check -p rusty_esp_iroh-core --no-default-features --features alloc \
-  --target riscv32imac-unknown-none-elf
-```
-
-Firmware examples (Xtensa needs `espup`; RISC-V works on stable) are built from
-their own directories under `firmware/`.
+[Mata Network](https://www.mata.network) builds sovereign, self-hostable infrastructure.
+**Remade With Rust** is our open-source home for the permissively-licensed
+building blocks that work depends on.
 
 ## License
 
-MIT OR Apache-2.0, at your option.
+MIT OR Apache-2.0, at your option. See [LICENSE-MIT](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/LICENSE-MIT)
+and [LICENSE-APACHE](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/LICENSE-APACHE).

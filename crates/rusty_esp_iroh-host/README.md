@@ -1,27 +1,52 @@
 # rusty_esp_iroh-host
 
-The `std` half of [`rusty_esp_iroh`](https://crates.io/crates/rusty_esp_iroh):
-a Janus **node** (one iroh 1.x endpoint answering `janus/echo/1`,
-`janus/rpc/1`, `janus/media/1` and the home computer's
-`mata-oem-sidecar/rpc/1`) and the **client** that dials it by ticket. The
-same code runs on a laptop, a Raspberry Pi and — as Track A — on ESP-IDF;
-`rusty_esp_iroh-esp` adds only what a chip needs (NVS, Wi-Fi, SNTP, mDNS).
+[![Remade With Rust](https://img.shields.io/badge/Remade%20With-Rust-000?logo=rust&logoColor=fff)](https://github.com/remade-with-rust) [![By Mata Network](https://img.shields.io/badge/by-Mata%20Network-5b2be0)](https://www.mata.network) [![crates.io](https://img.shields.io/crates/v/rusty_esp_iroh-host.svg)](https://crates.io/crates/rusty_esp_iroh-host) [![docs.rs](https://docs.rs/rusty_esp_iroh-host/badge.svg)](https://docs.rs/rusty_esp_iroh-host) [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/LICENSE-MIT)
 
-TLS is pure Rust: rustls with the rustls-rustcrypto provider n0 proved on
-ESP32 (`crypto.rs`, vendored from `iroh-esp32-examples`), so there is no
-`ring` and no `aws-lc` in the graph.
+The `std` half of the mesh package: a Janus node — echo, remote calls, media and the sidecar contract on a peer-to-peer endpoint — and the client that dials it by ticket or by device identity. The same code runs on a laptop, on a Raspberry Pi, and on an ESP32 under ESP-IDF.
 
-Reach: LAN-direct by default (relay disabled, the no-PSRAM tier). The `relay`
-feature adds n0's relays and pkarr lookup with the two shims the minimal
-provider needs (`relay.rs`: getaddrinfo DNS, a no-op relay certificate
-verifier — iroh authenticates peers by their keys, not by TLS certificates);
-`NodeConfig::relay = true` / `Client::bind(.., true)` then reach beyond the
-LAN, and refuse instead of silently downgrading when the feature is off.
+That last clause is the design: the node is not a special embedded implementation, it is the ordinary one, and the chip runs it because ESP-IDF gives it `std`. **Verified on silicon**: node up 3.2 s after boot, 721 media packets in 60 s with none lost, adoption accepted with a stranger and a superseded record both refused.
 
-```sh
-cargo run -p rusty_esp_iroh-host --example node -- 192.168.1.20
-cargo run -p rusty_esp_iroh-host --example client -- <janus1 ticket> echo|ping|manifest|telemetry|sidecar|media 10
-cargo test -p rusty_esp_iroh-host          # node + client in one process, loopback
-```
+## Where the evidence is
 
-Part of Janus (Remade With Rust). Plan: `docs/plans/rusty_esp_iroh.md` in the repo.
+This crate is part of [`rusty_esp_iroh`](https://crates.io/crates/rusty_esp_iroh). The
+hardware results, the method lines and the open defects live in that package's
+[README](https://github.com/Remade-With-Rust/rusty_esp_iroh#readme) and in
+[`docs/LEDGER.md`](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/docs/LEDGER.md), where no number
+appears without the run that produced it.
+
+## Part of Janus
+
+**Janus** rebuilds the Espressif ESP32 and Arduino application portfolio as
+independent, memory-safe Rust packages — so a hardware maker can ship a device
+that the [MATA](https://www.mata.network) home computer discovers, catalogs honestly, adopts
+under its own identity, and pays for. Ten packages, three layers, and the
+dependency direction never reverses.
+
+| layer | packages |
+|---|---|
+| **0 — the vocabulary** | [`rusty_esp_core`](https://crates.io/crates/rusty_esp_core) · [`rusty_esp_dsp`](https://crates.io/crates/rusty_esp_dsp) |
+| **1 — the functions** | [`rusty_esp_image`](https://crates.io/crates/rusty_esp_image) · [`rusty_esp_video`](https://crates.io/crates/rusty_esp_video) · [`rusty_esp_audio`](https://crates.io/crates/rusty_esp_audio) · [`rusty_esp_signal`](https://crates.io/crates/rusty_esp_signal) · [`rusty_esp_mid`](https://crates.io/crates/rusty_esp_mid) · [`rusty_esp_iroh`](https://crates.io/crates/rusty_esp_iroh) |
+| **2 — the surfaces** | [`rusty_esp_arduino`](https://crates.io/crates/rusty_esp_arduino) — the sketch facade · [`espino`](https://crates.io/crates/espino) — the maker's CLI |
+
+Every package is host-verified against an external oracle and keeps a ledger
+in which no number appears without the run that produced it. **Five of seven
+device profiles have now run their kill tests on real silicon**, three of them
+over a Wi-Fi network the board hosts itself.
+
+Also check out the rest of [Remade With Rust](https://github.com/remade-with-rust) — including
+[`rusty_alloc`](https://crates.io/crates/rusty_alloc), the pure-Rust rebuild of
+mimalloc that these firmwares run on, and
+[`rusty_jpeg`](https://crates.io/crates/rusty_jpeg), the JPEG engine behind the
+camera path — and our sister project
+[remade_ffmpeg_rs](https://github.com/Remade-With-Rust/remade_ffmpeg_rs), a ground-up Rust rebuild of FFmpeg.
+
+## About Mata Network
+
+[Mata Network](https://www.mata.network) builds sovereign, self-hostable infrastructure.
+**Remade With Rust** is our open-source home for the permissively-licensed
+building blocks that work depends on.
+
+## License
+
+MIT OR Apache-2.0, at your option. See [LICENSE-MIT](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/LICENSE-MIT)
+and [LICENSE-APACHE](https://github.com/Remade-With-Rust/rusty_esp_iroh/blob/main/LICENSE-APACHE).
