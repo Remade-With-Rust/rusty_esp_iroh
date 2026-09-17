@@ -916,3 +916,24 @@ Also that run: the cap held. With `max_media_subscribers = 2`, levels 1
 and 2 were served, the board answered a ping after each, and it did not
 restart (the run before, uncapped, panicked at four). Level 3 was not
 asked — the flood example doubled 1, 2, 4 — and asks now.
+
+## The family is on crates.io (2026-09-16, evening): what unblocked the last fifteen
+
+Eleven crates had been live since the morning; fifteen were blocked by three
+dependencies crates.io could not resolve. Each was cleared in the least
+invasive way that leaves a consumer with the same bytes we build:
+
+| blocker | what was done |
+|---|---|
+| `mid-types` and `mid-signer` existed only on the `mid` repository's `device-signer-leaf` branch | published as `mid-types 0.2.0` and `mid-signer 0.2.0` from that branch (their own dependencies were already on crates.io); `rusty_esp_mid` depends on the registry versions, with a `[patch]` to the branch so a test build has one `DeviceSigner` — the other mid crates it uses are dev-dependencies only, which publish strips |
+| `rusty_flac` needed its `no_std` branch with the `libm` feature | rusty_flac #8 merged, #7 released 0.1.3, published (the repository has no registry token, so by hand); `rusty_esp_audio-core` depends on `0.1.3` |
+| `rusty_esp_iroh-host` needed n0's feature-gated branch of `rustls-rustcrypto` so the chip can carry P-256 alone; the crates.io 0.0.2-alpha has no such feature | the branch republished unchanged as `rustls-rustcrypto-gated 0.0.2-alpha` (its provenance in its description; not a remake, not maintained here); `rusty_esp_iroh-host` depends on it by version through a `package` rename, so no source changed |
+
+Order and timing: new crates are limited to a burst and then about one per
+ten minutes; a patient publisher ran detached, sleeping until the time
+crates.io named on each 429, in dependency order:
+__ORDER__
+
+Verified live by `cargo search` on each of the twenty-six: __VERIFIED__.
+What is not on crates.io, by decision: the composer (`espino`), and the
+umbrella.
