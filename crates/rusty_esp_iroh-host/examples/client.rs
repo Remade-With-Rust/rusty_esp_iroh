@@ -281,9 +281,13 @@ async fn main() {
             // subscriptions, a ping after each level; stops at the first
             // level with a failure or an unanswered ping.
             let max: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(16);
-            let mut level = 1;
+            // 1, 2, 3, then doubling: the edge the XIAO showed lies between
+            // 2 and 4, and a ramp that doubles never asks 3.
             let mut max_ok = 0;
-            while level <= max {
+            for level in [1usize, 2, 3, 4, 8, 16, 32] {
+                if level > max {
+                    break;
+                }
                 let f = client.flood(&addr, level, Duration::from_secs(3)).await;
                 let ping = matches!(
                     client.rpc_anonymous(&addr, Request::Ping).await,
@@ -298,7 +302,6 @@ async fn main() {
                 } else {
                     break;
                 }
-                level *= 2;
             }
             println!("FLOOD max_ok={max_ok}");
         }
