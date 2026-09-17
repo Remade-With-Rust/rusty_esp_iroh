@@ -47,7 +47,10 @@ rand = "0.9"
 # the rustls-rustcrypto provider (AES-128-GCM + X25519), so no ring and no
 # aws-lc anywhere in the graph.
 rustls = { version = "0.23", default-features = false }
-rustls-rustcrypto = { version = "0.0.2-alpha", git = "https://github.com/n0-computer/rustls-rustcrypto", branch = "feature-flag-algorithms-v0.0.2", default-features = false, features = ["std", "p256"] }
+# n0's feature-gated branch of RustCrypto's rustls-rustcrypto, published unchanged as
+# `rustls-rustcrypto-gated` (2026-09-16) because crates.io cannot carry a git dependency
+# and the chip must be able to select P-256 alone. The `package` rename keeps the source as it was.
+rustls-rustcrypto = { package = "rustls-rustcrypto-gated", version = "0.0.2-alpha", default-features = false, features = ["std", "p256"] }
 aes = "0.8"
 aes-gcm = "0.10"
 

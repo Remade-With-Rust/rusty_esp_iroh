@@ -813,7 +813,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c54e03a951783e8b327515db3f2a2fd0e3bed362a96b066f341ce66ed49b4ead"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -3738,9 +3738,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
-name = "rustls-rustcrypto"
+name = "rustls-rustcrypto-gated"
 version = "0.0.2-alpha"
-source = "git+https://github.com/n0-computer/rustls-rustcrypto?branch=feature-flag-algorithms-v0.0.2#aa51a5ca466e85f382a32b212c551385be1ea248"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0246f3d6106e1eb30073571ae735fea5f2efb637b22300b7c8198c75f67eeded"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -3877,7 +3878,7 @@ dependencies = [
  "n0-future",
  "rand 0.9.5",
  "rustls",
- "rustls-rustcrypto",
+ "rustls-rustcrypto-gated",
  "rusty_esp_core",
  "rusty_esp_iroh-core",
  "rusty_esp_mid-core",
