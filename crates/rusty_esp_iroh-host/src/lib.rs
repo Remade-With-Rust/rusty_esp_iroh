@@ -27,7 +27,7 @@ pub mod relay;
 pub use client::Client;
 pub use error::HostError;
 pub use identity::NodeIdentity;
-pub use node::{Extras, MediaSource, NeighbourSource, Node, NodeConfig};
+pub use node::{Extras, MediaSource, NeighbourSource, Node, NodeConfig, BootStats};
 
 /// Apply the reach tier to an endpoint builder: LAN-direct (relay disabled)
 /// or, with the `relay` feature, n0's relays + pkarr through [`relay::apply`].

@@ -52,6 +52,21 @@ pub struct NodeConfig {
     /// ESP32-S3 served two and panicked at four (2026-09-16), a subscription
     /// costing 17,000-19,088 B of its ~73,000 B of free internal RAM.
     pub max_media_subscribers: u32,
+    /// This boot's record, advertised as `boots=`, `crashes=`, `last_reset=`
+    /// and answered in the sidecar status, so a home computer sees a device
+    /// that keeps restarting. `None` advertises nothing.
+    pub boot: Option<BootStats>,
+}
+
+/// What a device knows about this boot and the ones before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BootStats {
+    /// Boots counted, this one included.
+    pub boots: u32,
+    /// Boots that followed a failure.
+    pub crashes: u32,
+    /// Why the current boot happened, as the device names it.
+    pub last_reset: &'static str,
 }
 
 impl Default for NodeConfig {
@@ -61,6 +76,7 @@ impl Default for NodeConfig {
             model: String::from("janus/node"),
             firmware: format!("rusty_esp_iroh {}", rusty_esp_iroh_core::VERSION),
             max_media_subscribers: 0,
+            boot: None,
         }
     }
 }
@@ -277,6 +293,9 @@ impl DeviceState {
             iroh_node_id: Some(node_id),
             direct_addrs: direct,
             relay_urls: &[],
+            boots: self.config.boot.map(|b| b.boots),
+            crashes: self.config.boot.map(|b| b.crashes),
+            last_reset: self.config.boot.map(|b| b.last_reset),
         }
     }
 }

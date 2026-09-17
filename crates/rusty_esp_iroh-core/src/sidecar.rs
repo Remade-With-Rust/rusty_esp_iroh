@@ -99,6 +99,12 @@ pub struct DeviceInfo<'a> {
     pub direct_addrs: &'a [&'a str],
     /// Relay URLs.
     pub relay_urls: &'a [&'a str],
+    /// Boots the device has counted, when it keeps a record.
+    pub boots: Option<u32>,
+    /// Boots that followed a failure, when it keeps a record.
+    pub crashes: Option<u32>,
+    /// Why the current boot happened, as the device names it.
+    pub last_reset: Option<&'a str>,
 }
 
 /// A UUID-shaped string derived from a DID so `box_device_id` parses on the
@@ -151,6 +157,16 @@ pub fn txt_record(info: &DeviceInfo<'_>) -> Vec<(String, String)> {
     }
     if let Some(m) = info.maker_did {
         put("maker_did", m.to_string());
+    }
+    // A device that keeps restarting says so where a home computer looks.
+    if let Some(b) = info.boots {
+        put("boots", b.to_string());
+    }
+    if let Some(c) = info.crashes {
+        put("crashes", c.to_string());
+    }
+    if let Some(r) = info.last_reset {
+        put("last_reset", r.to_string());
     }
     put("model", info.model.to_string());
     put("did", info.did.to_string());
@@ -268,6 +284,9 @@ fn dispatch(
             "provenance": info.tier.wire_tag(),
             "capability": { "storage": false, "mesh": true, "gpu": false, "radio": true },
             "maker_did": info.maker_did,
+            "boots": info.boots,
+            "crashes": info.crashes,
+            "last_reset": info.last_reset,
             "model": info.model,
             "service_type": SERVICE_TYPE,
             "bind": "iroh",
@@ -319,6 +338,9 @@ mod tests {
             pair_state: PairState::Open,
             tier: Tier::BestEffort,
             maker_did: None,
+            boots: None,
+            crashes: None,
+            last_reset: None,
             fw: "janus-mesh 0.1.0",
             iroh_node_id: Some("abc123"),
             direct_addrs: addrs,
