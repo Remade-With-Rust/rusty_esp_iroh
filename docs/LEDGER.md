@@ -884,3 +884,35 @@ or stream error names its stage and how many bytes had been sent. The
 device logs the admission (`ota: admitted <firmware> (<len> bytes)`), every
 512 KB written, the stop with its reason, and the verdict. Whether the
 timeout was the whole story is what the next attempt's log will say.
+
+## N5 on silicon: a maker-signed update over the board's own Wi-Fi, into the other slot, kept after a hard reset (2026-09-16, 22:23)
+
+The XIAO ESP32-S3 Sense, running the two-slot C2 from `ota_0` (0x20000),
+adopted by the bench owner. The owner pushed `ota_sign`'s manifest and the
+4,031,312-byte image through the client's `ota` op over the board's access
+point. Both ends recorded it:
+
+| where | what |
+|---|---|
+| device, 19.49 s uptime | `ota: admitted 0.1.1 (4031312 bytes) from the owner; writing` |
+| device, 30.57 s → 84.02 s | `ota: 524845 … 3670328 of 4031312 bytes written`, a mark every ~9 s: **58.8 KB/s into flash** (3,145,483 B over 53.45 s between the first and last marks) |
+| device, 90.16 s | `ota: all bytes in; verifying and committing` |
+| device, 91.26 s | `ota: committed 0.1.1` — **1.1 s** to hash-check and set the boot partition |
+| device, 91.29 s | the sketch: `update 0.1.1 is in the other slot; restarting into it`, then `rst:0xc (RTC_SW_CPU_RST)` |
+| client | `Committed { firmware: "0.1.1", sha256: b2daca3e… }` in **72.79 s** |
+| the next boot | `Loaded app from partition at offset 0x400000`; the same endpoint id `cb29bdc9a2…` (`identity` untouched); mDNS up at 2.98 s |
+| a hard reset after that | `Loaded app from partition at offset 0x400000` again: the running image had marked itself good, the bootloader did not roll back |
+
+Method: the runner's `-OtaImage`/`-OtaManifest` pass, rows `ota-committed`,
+`ota-restart`, `ota-other-slot` (0x20000 → 0x400000, both read off the
+bootloader's line), `endpoint-after-ota`, `ota-valid-after-reset`; the
+device's lines from its serial capture. What stays host-tested only: a
+non-validating image rolling back, and a bad signature never getting
+`OtaReady` (the N5 host rows above). The second attempt's timeout is
+explained by the numbers: 72.8 s end to end against a client that once
+allowed 10 s for the verdict.
+
+Also that run: the cap held. With `max_media_subscribers = 2`, levels 1
+and 2 were served, the board answered a ping after each, and it did not
+restart (the run before, uncapped, panicked at four). Level 3 was not
+asked — the flood example doubled 1, 2, 4 — and asks now.
