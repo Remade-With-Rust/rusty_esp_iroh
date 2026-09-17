@@ -787,6 +787,27 @@ impl ProtocolHandler for Media {
         let Some(factory) = &self.factory else {
             return Err(AcceptError::from_err(HostError::Rpc(RpcError::Unsupported)));
         };
+        // Reserve a slot before a stream is accepted or a byte is read. A
+        // subscriber beyond the cap must cost only the connection the router
+        // already set up: reading its frame and allocating its body buffer
+        // first, while the served sources run, is what a concurrent burst of
+        // cap+1 panicked the XIAO on (condvar could not be created, out of
+        // internal RAM; Run 5, 2026-09-17). The reserve is atomic, so cap+1
+        // handlers racing cannot all pass.
+        let prev = self.state.counters.media_live.fetch_add(1, Ordering::AcqRel);
+        if self.max > 0 && prev >= self.max {
+            self.state.counters.media_live.fetch_sub(1, Ordering::AcqRel);
+            self.state
+                .counters
+                .media_refused
+                .fetch_add(1, Ordering::Relaxed);
+            log::warn!("media: refused a subscriber: {prev} of {} already served", self.max);
+            connection.close(1u32.into(), b"busy");
+            return Ok(());
+        }
+        // Whatever way the handler ends, the reserved slot comes back.
+        let _live = LiveGuard(&self.state.counters.media_live);
+
         let (mut send, mut recv) = connection.accept_bi().await?;
         let mut prefix = [0u8; 4];
         recv.read_exact(&mut prefix)
@@ -798,21 +819,6 @@ impl ProtocolHandler for Media {
             .await
             .map_err(AcceptError::from_err)?;
         let sub: Subscribe = rpc::decode_body(&body).map_err(AcceptError::from_err)?;
-        // The cap, before anything is allocated for this subscriber: the
-        // source gets a thread and a channel below, and on the XIAO the
-        // fourth of those is the one that could not be created. A refused
-        // subscriber gets no acknowledgement and a closed connection, which
-        // its `subscribe` reports as an error; the count says how many.
-        let live = self.state.counters.media_live.load(Ordering::Relaxed);
-        if self.max > 0 && live >= self.max {
-            self.state
-                .counters
-                .media_refused
-                .fetch_add(1, Ordering::Relaxed);
-            log::warn!("media: refused a subscriber: {live} of {} already served", self.max);
-            connection.close(1u32.into(), b"busy");
-            return Ok(());
-        }
         // Acknowledge with the same frame; the subscriber knows packets follow.
         let ack = rpc::encode_frame(&sub).map_err(AcceptError::from_err)?;
         send.write_all(&ack).await.map_err(AcceptError::from_err)?;
@@ -821,12 +827,6 @@ impl ProtocolHandler for Media {
             .counters
             .media_subscribers
             .fetch_add(1, Ordering::Relaxed);
-        self.state
-            .counters
-            .media_live
-            .fetch_add(1, Ordering::Relaxed);
-        // Whatever way the loop below ends, the live count comes down.
-        let _live = LiveGuard(&self.state.counters.media_live);
 
         let mut source = factory(&sub);
         let interval = source.interval();
