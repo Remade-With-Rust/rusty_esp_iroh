@@ -855,3 +855,32 @@ will exhaust it. The runner's `-Flood` pass ramps 1, 2, 4, 8, 16 with a ping
 between levels and, if the board restarts, waits for its banner and asks
 again — the row is the level it served and whether it came back by itself.
 A cap is designed from that number, not before it.
+
+## A cap on live subscribers, and an update that says what it is doing (2026-09-16, from Run 4's second attempt)
+
+**Four media subscriptions at once panicked the XIAO ESP32-S3** —
+`thread 'tokio-rt-worker' panicked at …/sys/sync/condvar/pthread.rs:39`, a
+condvar that could not be created, then `rst:0xc (RTC_SW_CPU_RST)` — two
+were served and three were never asked. The media handler gives every
+subscriber a thread for its source and a channel; on the XIAO the fourth of
+those is the allocation that fails. So the node refuses a subscriber beyond
+`NodeConfig::max_media_subscribers` **before** anything is allocated for it,
+closes its connection with `busy`, and counts it (`media_refused`), beside a
+live count (`media_live`) that a guard brings down however the handler ends.
+`0` is no cap, the host's default; the facade sets two on ESP-IDF and the
+generated sketch states the number and its reason.
+
+| over loopback, a node capped at two | result |
+|---|---|
+| four subscriptions at once | 2 served, 2 refused, `media_refused` = 2, then `Pong` |
+| after they end | `media_live` = 0, and one more is served |
+
+**The signed update timed out at the client with nothing on the device's
+log.** The client wrote 4,028,080 bytes — a QUIC write completes when the
+bytes are accepted, not received — then allowed 10 s for the verdict while
+the device was still writing flash. `Client::ota` now waits 30 s plus a
+second per 50 KB for the verdict (110 s for that image), and every timeout
+or stream error names its stage and how many bytes had been sent. The
+device logs the admission (`ota: admitted <firmware> (<len> bytes)`), every
+512 KB written, the stop with its reason, and the verdict. Whether the
+timeout was the whole story is what the next attempt's log will say.

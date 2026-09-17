@@ -333,3 +333,60 @@ async fn garbage_on_every_alpn_and_a_flood_leave_the_node_answering() {
     client.close().await;
     node.shutdown().await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_capped_node_refuses_the_subscriber_beyond_its_cap_and_keeps_answering() {
+    // The XIAO served two subscribers and panicked at four (Run 4, second
+    // attempt, 2026-09-16): a cap is what a device sets from that number.
+    let mut kv = MemoryKv::new();
+    let mut rng = InsecureTestRng::seeded(0xCA9);
+    let identity = NodeIdentity::load_or_create(&mut kv, &mut rng, "janus").unwrap();
+    let declared = [Declared::available(Capability::IrohLanDirect, "rusty_esp_iroh")];
+    let manifest = Manifest {
+        model: "janus/capped",
+        firmware: "0.1.0-test",
+        chip: Chip::Esp32S3,
+        declared: &declared,
+    };
+    let media = Arc::new(|_sub: &Subscribe| -> Box<dyn MediaSource> {
+        Box::new(Synthetic {
+            seq: 0,
+            size: 900,
+            interval: Duration::from_millis(5),
+            remaining: 400,
+        })
+    });
+    let node = Node::bind(
+        identity,
+        Box::new(kv),
+        &manifest,
+        Some(media),
+        NodeConfig {
+            max_media_subscribers: 2,
+            ..NodeConfig::default()
+        },
+    )
+    .await
+    .unwrap();
+    let ticket = node.refresh_ticket(&[IpAddr::V4(Ipv4Addr::LOCALHOST)]);
+    let addr = endpoint_addr(&ticket).unwrap();
+    let client = Client::bind(None, None, false).await.unwrap();
+
+    let f = client.flood(&addr, 4, Duration::from_millis(400)).await;
+    assert_eq!(f.ok, 2, "{f:?}");
+    assert_eq!(f.failed, 2, "{f:?}");
+    let c = &node.state().counters;
+    assert_eq!(c.media_refused.load(std::sync::atomic::Ordering::Relaxed), 2);
+    assert!(
+        matches!(client.rpc_anonymous(&addr, Request::Ping).await, Ok(Response::Pong)),
+        "the node answers with two live and two refused"
+    );
+    // and once they are gone, the cap admits again
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(c.media_live.load(std::sync::atomic::Ordering::Relaxed), 0, "live count came down");
+    let again = client.flood(&addr, 1, Duration::from_millis(200)).await;
+    assert_eq!(again.ok, 1, "{again:?}");
+
+    client.close().await;
+    node.shutdown().await;
+}

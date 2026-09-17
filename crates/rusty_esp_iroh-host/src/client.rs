@@ -264,7 +264,11 @@ impl Client {
         send.write_all(&frame)
             .await
             .map_err(|e| HostError::Stream(format!("{e}")))?;
-        let first = self.read_frame(&mut recv).await?;
+        let started = std::time::Instant::now();
+        let first = self
+            .read_frame_within(&mut recv, self.timeout)
+            .await
+            .map_err(|e| ota_stage(e, "the device's OtaReady", 0, started))?;
         match first {
             Response::OtaReady => {}
             Response::Error(e) => return Ok(OtaOutcome::Refused(e)),
@@ -274,14 +278,25 @@ impl Client {
                 ));
             }
         }
+        let mut sent = 0usize;
         for chunk in image.chunks(CHUNK_LEN) {
             send.write_all(chunk)
                 .await
-                .map_err(|e| HostError::Stream(format!("{e}")))?;
+                .map_err(|e| ota_stage(HostError::Stream(format!("{e}")), "a chunk", sent, started))?;
+            sent += chunk.len();
         }
         send.finish()
             .map_err(|e| HostError::Stream(format!("{e}")))?;
-        let verdict = self.read_frame(&mut recv).await?;
+        // A QUIC write completes when the bytes are accepted, not received:
+        // the device may still be writing megabytes to flash when the last
+        // chunk is "sent". The verdict's patience fits the image -- 30 s
+        // plus a second per 50 KB, 110 s for a 4 MB image -- because the
+        // second attempt of Run 4 (2026-09-16) gave up after 10 s.
+        let patience = Duration::from_secs(30 + u64::from(manifest.image_len) / 50_000);
+        let verdict = self
+            .read_frame_within(&mut recv, patience)
+            .await
+            .map_err(|e| ota_stage(e, "the verdict", sent, started))?;
         match verdict {
             Response::OtaResult { firmware, sha256 } => {
                 Ok(OtaOutcome::Committed { firmware, sha256 })
@@ -293,16 +308,21 @@ impl Client {
         }
     }
 
-    /// One length-prefixed response frame off a stream that stays open.
-    async fn read_frame(&self, recv: &mut iroh::endpoint::RecvStream) -> Result<Response> {
+    /// One length-prefixed response frame off a stream that stays open,
+    /// within `patience`.
+    async fn read_frame_within(
+        &self,
+        recv: &mut iroh::endpoint::RecvStream,
+        patience: Duration,
+    ) -> Result<Response> {
         let mut prefix = [0u8; 4];
-        tokio::time::timeout(self.timeout, recv.read_exact(&mut prefix))
+        tokio::time::timeout(patience, recv.read_exact(&mut prefix))
             .await
             .map_err(|_| HostError::Timeout)?
             .map_err(|e| HostError::Stream(format!("{e}")))?;
         let n = rpc::frame_len(&prefix)?;
         let mut body = vec![0u8; n];
-        tokio::time::timeout(self.timeout, recv.read_exact(&mut body))
+        tokio::time::timeout(patience, recv.read_exact(&mut body))
             .await
             .map_err(|_| HostError::Timeout)?
             .map_err(|e| HostError::Stream(format!("{e}")))?;
@@ -572,6 +592,22 @@ async fn join_all<F: Future + Unpin>(mut futs: Vec<F>) -> Vec<F::Output> {
     })
     .await;
     out.into_iter().flatten().collect()
+}
+
+/// A timeout or a stream error during an update, with the stage it
+/// happened at and how far the push had got: "Timeout" alone cost a trip.
+fn ota_stage(e: HostError, stage: &str, sent: usize, started: std::time::Instant) -> HostError {
+    match e {
+        HostError::Timeout => HostError::Stream(format!(
+            "timed out waiting for {stage} after {:.1} s with {sent} bytes sent",
+            started.elapsed().as_secs_f64()
+        )),
+        HostError::Stream(s) => HostError::Stream(format!(
+            "{s} (at {stage}, after {:.1} s with {sent} bytes sent)",
+            started.elapsed().as_secs_f64()
+        )),
+        other => other,
+    }
 }
 
 /// What the device said to an update.

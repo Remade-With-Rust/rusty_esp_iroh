@@ -47,6 +47,11 @@ pub struct NodeConfig {
     pub model: String,
     /// Firmware identifier.
     pub firmware: String,
+    /// Media subscriptions served at once; a subscriber beyond it is refused
+    /// and counted. `0` is no cap. A device sets what it measured: the XIAO
+    /// ESP32-S3 served two and panicked at four (2026-09-16), a subscription
+    /// costing 17,000-19,088 B of its ~73,000 B of free internal RAM.
+    pub max_media_subscribers: u32,
 }
 
 impl Default for NodeConfig {
@@ -55,6 +60,7 @@ impl Default for NodeConfig {
             relay: false,
             model: String::from("janus/node"),
             firmware: format!("rusty_esp_iroh {}", rusty_esp_iroh_core::VERSION),
+            max_media_subscribers: 0,
         }
     }
 }
@@ -135,8 +141,12 @@ pub struct Counters {
     pub rpc_refused: AtomicU32,
     /// Sidecar requests answered.
     pub sidecar: AtomicU32,
-    /// Media subscribers served.
+    /// Media subscribers served (a total).
     pub media_subscribers: AtomicU32,
+    /// Media subscribers being served right now.
+    pub media_live: AtomicU32,
+    /// Media subscribers refused because the cap was reached.
+    pub media_refused: AtomicU32,
     /// Media packets sent.
     pub media_packets: AtomicU32,
     /// Media packets that could not be sent.
@@ -328,6 +338,7 @@ impl Node {
             .secret_key(identity.endpoint.clone())
             .alpns(alpn::ALL.iter().map(|a| a.to_vec()).collect());
         let builder = crate::configure_reach(builder, config.relay)?;
+        let max_media = config.max_media_subscribers;
         let endpoint = builder
             .bind()
             .await
@@ -362,6 +373,7 @@ impl Node {
                 Media {
                     state: state.clone(),
                     factory: media,
+                    max: max_media,
                 },
             )
             .spawn();
@@ -598,6 +610,10 @@ impl ProtocolHandler for Ota {
                 match taken {
                     Err(r) => r,
                     Ok(mut sink) => {
+                        log::info!(
+                            "ota: admitted {} ({} bytes) from the owner; writing",
+                            manifest.firmware, manifest.image_len
+                        );
                         let outcome = match OtaSession::begin(manifest.clone(), sink.as_mut()) {
                             Err(r) => Err(r),
                             Ok(mut session) => {
@@ -614,15 +630,32 @@ impl ProtocolHandler for Ota {
                                     }
                                 }
                                 let mut buf = vec![0u8; CHUNK_LEN];
+                                let mut next_mark = 512 * 1024;
                                 while failed.is_none() && session.written() < manifest.image_len {
                                     match recv.read(&mut buf).await {
                                         Ok(Some(n)) => {
                                             if let Err(r) = session.push(&buf[..n]) {
                                                 failed = Some(r);
+                                            } else if session.written() >= next_mark {
+                                                log::info!(
+                                                    "ota: {} of {} bytes written",
+                                                    session.written(),
+                                                    manifest.image_len
+                                                );
+                                                next_mark += 512 * 1024;
                                             }
                                         }
                                         Ok(None) | Err(_) => failed = Some(Refusal::LengthMismatch),
                                     }
+                                }
+                                if let Some(r) = &failed {
+                                    log::warn!(
+                                        "ota: stopped after {} of {} bytes: {r:?}",
+                                        session.written(),
+                                        manifest.image_len
+                                    );
+                                } else {
+                                    log::info!("ota: all bytes in; verifying and committing");
                                 }
                                 match failed {
                                     Some(r) => Err(r),
@@ -632,6 +665,10 @@ impl ProtocolHandler for Ota {
                         };
                         // the session is gone: the slot goes back either way
                         *self.0.ota.as_ref().expect("slot").lock().expect("ota lock") = Some(sink);
+                        match &outcome {
+                            Ok(_) => log::info!("ota: committed {}", manifest.firmware),
+                            Err(r) => log::warn!("ota: refused: {r:?}"),
+                        }
                         match outcome {
                             Ok(sha256) => {
                                 self.0
@@ -704,9 +741,20 @@ impl ProtocolHandler for Sidecar {
     }
 }
 
+/// One live subscriber, counted down when the handler returns.
+struct LiveGuard<'a>(&'a AtomicU32);
+
+impl Drop for LiveGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 struct Media {
     state: Arc<DeviceState>,
     factory: Option<MediaFactory>,
+    /// Live subscribers allowed at once; `0` is no cap.
+    max: u32,
 }
 
 impl core::fmt::Debug for Media {
@@ -731,6 +779,21 @@ impl ProtocolHandler for Media {
             .await
             .map_err(AcceptError::from_err)?;
         let sub: Subscribe = rpc::decode_body(&body).map_err(AcceptError::from_err)?;
+        // The cap, before anything is allocated for this subscriber: the
+        // source gets a thread and a channel below, and on the XIAO the
+        // fourth of those is the one that could not be created. A refused
+        // subscriber gets no acknowledgement and a closed connection, which
+        // its `subscribe` reports as an error; the count says how many.
+        let live = self.state.counters.media_live.load(Ordering::Relaxed);
+        if self.max > 0 && live >= self.max {
+            self.state
+                .counters
+                .media_refused
+                .fetch_add(1, Ordering::Relaxed);
+            log::warn!("media: refused a subscriber: {live} of {} already served", self.max);
+            connection.close(1u32.into(), b"busy");
+            return Ok(());
+        }
         // Acknowledge with the same frame; the subscriber knows packets follow.
         let ack = rpc::encode_frame(&sub).map_err(AcceptError::from_err)?;
         send.write_all(&ack).await.map_err(AcceptError::from_err)?;
@@ -739,6 +802,12 @@ impl ProtocolHandler for Media {
             .counters
             .media_subscribers
             .fetch_add(1, Ordering::Relaxed);
+        self.state
+            .counters
+            .media_live
+            .fetch_add(1, Ordering::Relaxed);
+        // Whatever way the loop below ends, the live count comes down.
+        let _live = LiveGuard(&self.state.counters.media_live);
 
         let mut source = factory(&sub);
         let interval = source.interval();

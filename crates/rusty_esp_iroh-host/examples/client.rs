@@ -177,9 +177,11 @@ async fn main() {
                     .expect("parse manifest");
             let outcome = client
                 .ota(&addr, &device_did, &manifest, &image)
-                .await
-                .expect("ota");
-            println!("ota: {outcome:?}");
+                .await;
+            match outcome {
+                Ok(o) => println!("ota: {o:?} in {:?}", started.elapsed()),
+                Err(e) => println!("ota: error {e:?} in {:?}", started.elapsed()),
+            }
         }
         "media" => {
             // client <ticket> media [secs] [out-dir]: with an out-dir every
