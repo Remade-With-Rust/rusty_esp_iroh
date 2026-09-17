@@ -932,8 +932,8 @@ invasive way that leaves a consumer with the same bytes we build:
 Order and timing: new crates are limited to a burst and then about one per
 ten minutes; a patient publisher ran detached, sleeping until the time
 crates.io named on each 429, in dependency order:
-__ORDER__
+mid-types 0.2.0 and mid-signer 0.2.0 (22:44), rusty_flac 0.1.3 (22:47), rustls-rustcrypto-gated 0.0.2-alpha (23:28); then rusty_esp_mid-core (22:50), rusty_esp_mid-esp (22:55), rusty_esp_signal-core (22:59), rusty_esp_signal-esp (23:03), rusty_esp_audio-core (23:06), rusty_esp_iroh-core (23:09), rusty_esp_audio-esp (23:19), rusty_esp_audio (23:39), rusty_esp_iroh-host (23:49), rusty_esp_mid (23:59), rusty_esp_signal (00:09), rusty_esp_iroh-bridge (00:19), rusty_esp_iroh-esp (00:29), rusty_esp_iroh (00:39), rusty_esp_arduino (00:49) — 2026-09-16 into 09-17.
 
-Verified live by `cargo search` on each of the twenty-six: __VERIFIED__.
+Verified live by `cargo search` on each of the twenty-six: 26 of 26 at 0.1.0, 2026-09-17 00:51, none missing.
 What is not on crates.io, by decision: the composer (`espino`), and the
 umbrella.
