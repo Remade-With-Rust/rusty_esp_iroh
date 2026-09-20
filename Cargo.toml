@@ -38,7 +38,11 @@ rusty_esp_iroh-host = { path = "crates/rusty_esp_iroh-host", version = "0.1.0", 
 rusty_esp_core = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_core", default-features = false }
 rusty_esp_mid-core = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false }
 rusty_esp_video-core = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_video", default-features = false }
-rusty_esp_signal-core = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_signal", default-features = false }
+# 0.2: `rusty_esp_signal-esp` dropped `EspNowLink`'s lifetime when
+# esp-radio beta.1 removed it from the ESP-NOW halves. A breaking change
+# on a 0.x crate bumps the MINOR, and the signal set versions in lockstep,
+# so -core moves with it even though -core itself did not break.
+rusty_esp_signal-core = { version = "0.2", git = "https://github.com/Remade-With-Rust/rusty_esp_signal", default-features = false }
 
 # Wire serialization for the janus/* ALPNs (Layer 1 may use serde; Layer 0 stays serde-free).
 serde = { version = "1", default-features = false, features = ["derive"] }
