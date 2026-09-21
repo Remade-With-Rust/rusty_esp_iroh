@@ -2469,7 +2469,8 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "mid-signer"
 version = "0.2.0"
-source = "git+https://github.com/Remade-With-Rust/mid?branch=device-signer-leaf#6d42433e5b291ac2c6a03f9bed8109622313d6cd"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9dff3a2a3c9df2c352021b7863c6b2410ca16aad84ff3bc2b04c4cb9c79506e"
 dependencies = [
  "p256",
  "rand_core 0.6.4",
@@ -2478,7 +2479,8 @@ dependencies = [
 [[package]]
 name = "mid-types"
 version = "0.2.0"
-source = "git+https://github.com/Remade-With-Rust/mid?branch=device-signer-leaf#6d42433e5b291ac2c6a03f9bed8109622313d6cd"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "470decca1c1337708c5212f9df97ff8aaa97a147cc38a506c53f46712e7e9e02"
 dependencies = [
  "serde",
  "serde_json",
@@ -3607,9 +3609,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
-name = "rustls-rustcrypto"
+name = "rustls-rustcrypto-gated"
 version = "0.0.2-alpha"
-source = "git+https://github.com/n0-computer/rustls-rustcrypto?branch=feature-flag-algorithms-v0.0.2#aa51a5ca466e85f382a32b212c551385be1ea248"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0246f3d6106e1eb30073571ae735fea5f2efb637b22300b7c8198c75f67eeded"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -3662,7 +3665,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rusty_esp_core"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "rusty_esp_iroh-core"
@@ -3700,7 +3703,7 @@ dependencies = [
  "log",
  "rand 0.9.5",
  "rustls",
- "rustls-rustcrypto",
+ "rustls-rustcrypto-gated",
  "rusty_esp_core",
  "rusty_esp_iroh-core",
  "rusty_esp_mid-core",
@@ -5323,17 +5326,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[patch.unused]]
-name = "rusty_esp_dsp"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "rusty_esp_video-core"
-version = "0.1.0"
+name = "rusty_esp_alloc"
+version = "0.1.1"
 
 [[patch.unused]]
 name = "rusty_esp_image-core"
-version = "0.1.0"
+version = "0.1.1"
 
 [[patch.unused]]
 name = "rusty_esp_signal-core"
-version = "0.1.0"
+version = "0.2.0"
+
+[[patch.unused]]
+name = "rusty_esp_video-core"
+version = "0.1.1"
+
+[[patch.unused]]
+name = "rusty_esp_dsp"
+version = "0.1.1"

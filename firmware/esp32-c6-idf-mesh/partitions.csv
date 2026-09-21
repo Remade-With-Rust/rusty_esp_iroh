@@ -1,8 +1,18 @@
 # ESP32-C6 with 8 MB flash (ESP32-C6-WROOM-1-N8, XIAO ESP32C6 has 4 MB: a
 # no-PSRAM iroh node is ~4 MB, so 4 MB parts cannot hold it - see the ledger).
-# The app gets 6 MiB; NVS holds the device key; PHY calibration keeps its slot.
+# The app gets 6 MiB; PHY calibration keeps its slot; the owner's settings and
+# the device key have separate partitions.
+#
+# `identity` holds the device key and nothing an owner writes, and it ENDS the
+# flash so a flasher can stop before it. That separation is not decoration: an
+# ESP32-CAM re-minted its DID on every `nvs` rewrite until the key was moved
+# out of the owner's partition (espino ledger, 2026-09-05). This table used to
+# keep the key in `nvs` and said so in this comment; it was written before that
+# was understood.
+#
 # Flash with: espflash flash --partition-table partitions.csv --monitor
-# Name,   Type, SubType, Offset,  Size,     Flags
-nvs,      data, nvs,     0x9000,  0x6000,
-phy_init, data, phy,     0xf000,  0x1000,
-factory,  app,  factory, 0x10000, 0x600000,
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x600000,
+identity, data, nvs,     0x7fd000, 0x3000,

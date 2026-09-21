@@ -937,3 +937,80 @@ mid-types 0.2.0 and mid-signer 0.2.0 (22:44), rusty_flac 0.1.3 (22:47), rustls-r
 Verified live by `cargo search` on each of the twenty-six: 26 of 26 at 0.1.0, 2026-09-17 00:51, none missing.
 What is not on crates.io, by decision: the composer (`espino`), and the
 umbrella.
+
+---
+
+## 2026-09-21 — the mesh firmwares kept the device key in the owner's partition
+
+Both hand-written mesh firmwares opened the **default `nvs`** partition for
+the device key:
+
+```rust
+let mut kv = EspNvsKv::open(nvs_partition, "janus")?;
+```
+
+`nvs` is the partition `espino provision` rewrites. So an owner changing
+their Wi-Fi would have re-minted the device's DID and taken its owner pin
+with it — the device would have become a different device, and its adoption
+would have been gone. That is not hypothetical: an ESP32-CAM did exactly
+that until the key was moved out, which is why the `identity` partition
+exists (espino ledger, 2026-09-05).
+
+The espino-**generated** projects have always opened `IDENTITY_PARTITION`.
+These two predate that decision and never caught up.
+
+### The cause was the table, not the call
+
+Neither `partitions.csv` had an `identity` partition at all. Their comments
+said so plainly — *"NVS (the device key lives there)"* — so the firmware was
+doing exactly what its table allowed. Both tables now end the flash with it,
+matching espino's convention byte for byte:
+
+```
+identity, data, nvs, 0x7fd000, 0x3000     # 0x7fd000 + 0x3000 = 0x800000
+```
+
+The call is `open_custom(IDENTITY_PARTITION, "janus")` — `open_custom`, not
+the generated code's `_unchecked`, so it keeps the protection check `open`
+had: a plaintext partition is still refused unless built with
+`allow-insecure-dev`.
+
+### ★★ Neither firmware compiled, which is how they drifted
+
+Trying to verify the fix found they were already broken, independently of
+it:
+
+```
+error: environment variable `JANUS_WIFI_SSID` not defined at compile time
+error[E0063]: missing fields `boot` and `max_media_subscribers` in
+              initializer of `NodeConfig`
+```
+
+`NodeConfig` had gained two fields and these initializers had not. **Nothing
+builds these firmwares**, so nothing told anyone — and that is the same
+reason the identity decision never reached them. A compile error is only a
+signal if something compiles.
+
+Filling the fields used the library's own measurement rather than a
+convenient zero: the S3 cap is **2**, because it "served two and panicked at
+four, a subscription costing 17,000–19,088 B of its ~73,000 B of free
+internal RAM (2026-09-16)". The C6 is left at the default 0 and says so —
+that figure is the S3's and this part has different free RAM.
+
+### Verified
+
+| | |
+|---|---|
+| `xiao-s3-sense-idf-mesh` | builds, 4m 01s, ELF 10,332,504 B |
+| `esp32-c6-idf-mesh` | builds, 2m 53s |
+| both `partitions.csv` | parse under `espflash partition-table` |
+
+Their lockfiles moved in the process — the family resolved 0.1.0 → 0.1.1 and
+`rusty_esp_signal-core` to 0.2.0 — because these depend on the siblings by
+git URL on a default branch. The stale lock is part of why they stopped
+building.
+
+**Not verified: any of this on a board.** The fix changes where the key
+lives, so a board flashed with the new table mints a NEW DID; the old one is
+in a partition nothing reads any more. That is correct and it is a one-way
+step for any device already carrying an identity.

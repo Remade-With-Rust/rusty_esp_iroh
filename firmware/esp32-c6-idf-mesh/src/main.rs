@@ -26,7 +26,10 @@ use esp_idf_svc::wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWif
 use rusty_esp_core::capability::{Capability, Chip, Declared, Manifest};
 use rusty_esp_iroh_core::media::{PacketHeader, Subscribe, FLAG_KEY};
 use rusty_esp_iroh_core::ota::OtaSink;
-use rusty_esp_iroh_esp::idf::{register_eventfd, sync_time, EspNvsKv, EspOtaSink, EspRng, Protection, MDNS_COMPILED_IN};
+use rusty_esp_iroh_esp::idf::{
+    register_eventfd, sync_time, EspNvsKv, EspOtaSink, EspRng, Protection, IDENTITY_PARTITION,
+    MDNS_COMPILED_IN,
+};
 use rusty_esp_iroh_host::{Extras, MediaSource, Node, NodeConfig, NodeIdentity};
 
 const SSID: &str = env!("JANUS_WIFI_SSID");
@@ -79,7 +82,7 @@ fn main() -> Result<()> {
     let nvs_partition = EspDefaultNvsPartition::take()?;
 
     let mut wifi = BlockingWifi::wrap(
-        EspWifi::new(peripherals.modem, sysloop.clone(), Some(nvs_partition.clone()))?,
+        EspWifi::new(peripherals.modem, sysloop.clone(), Some(nvs_partition))?,
         sysloop,
     )?;
     wifi.set_configuration(&Configuration::Client(ClientConfiguration {
@@ -97,9 +100,20 @@ fn main() -> Result<()> {
     let (_sntp, synced) = sync_time(Duration::from_secs(20)).context("sntp")?;
     log::info!("janus n6: sntp synced = {synced}");
 
-    // Identity: the device key and the endpoint key live in NVS. The radio is
-    // up, so the hardware RNG is a true one.
-    let mut kv = EspNvsKv::open(nvs_partition, "janus").context("nvs (plaintext partition refused unless allow-insecure-dev)")?;
+    // Identity: the device key and the endpoint key live in their OWN
+    // partition, never the owner's `nvs`. This firmware used to open `nvs`,
+    // which is the partition `espino provision` rewrites -- so an owner
+    // changing their Wi-Fi would have re-minted the device's DID and lost its
+    // owner pin with it. That is not hypothetical: an ESP32-CAM did exactly
+    // that until the key was moved out (espino ledger, 2026-09-05).
+    //
+    // `open_custom` keeps the protection check `open` had: a plaintext
+    // partition is refused unless this is built with `allow-insecure-dev`.
+    //
+    // The radio is up, so the hardware RNG is a true one.
+    let mut kv = EspNvsKv::open_custom(IDENTITY_PARTITION, "janus").context(
+        "identity partition (plaintext refused unless allow-insecure-dev);          is the board flashed with this firmware's partitions.csv?",
+    )?;
     log::info!("janus n6: nvs protection = {:?}", kv.protection());
     if kv.protection() == Protection::Plaintext {
         log::warn!("janus n6: DEVELOPMENT BUILD — the device key sits in a plaintext partition");
@@ -142,6 +156,12 @@ fn main() -> Result<()> {
             relay: false, // the LAN-direct tier: no PSRAM, no relay
             model: String::from("janus/esp32-c6"),
             firmware: format!("janus-mesh {}", env!("CARGO_PKG_VERSION")),
+            // UNMEASURED on the C6 -- the two-subscriber figure is the
+            // S3's, and this part has different free RAM. 0 is no cap, which
+            // is what the library defaults to; it wants the same soak the S3
+            // had before a number goes here.
+            max_media_subscribers: 0,
+            boot: None,
         };
         let extras = Extras {
             maker_did: maker_did.map(String::from),

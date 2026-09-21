@@ -66,7 +66,7 @@ pub mod idf {
         esp_idf_comp_espressif__mdns_enabled
     ));
 
-    pub use rusty_esp_mid_esp::idf::{EspNvsKv, EspRng, Protection};
+    pub use rusty_esp_mid_esp::idf::{EspNvsKv, EspRng, Protection, IDENTITY_PARTITION};
 
     pub use ota::EspOtaSink;
 
