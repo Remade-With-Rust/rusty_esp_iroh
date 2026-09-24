@@ -14,7 +14,7 @@ use rusty_esp_mid_core::manifest::sign_manifest;
 use rusty_esp_signal_core::link::{ACCEPT_LEN, DEFAULT_LIFETIME, Handshake, MAX_PAYLOAD, Session};
 
 use crate::DynRng;
-use crate::neighbour::{MSG_MANIFEST, MSG_TELEMETRY};
+use crate::neighbour::{MSG_CSI, MSG_MANIFEST, MSG_TELEMETRY};
 use crate::radio::{PeerAddr, Radio};
 
 /// A simulated neighbour.
@@ -139,6 +139,16 @@ impl<R: Radio> NeighbourSim<R> {
             return Err(Error::Unsupported);
         }
         let mut payload = vec![MSG_TELEMETRY];
+        payload.extend_from_slice(bytes);
+        self.seal_and_send(&payload)
+    }
+
+    /// Send one CSI sample's bytes (the W5 stream), sealed.
+    pub fn send_csi(&mut self, bytes: &[u8]) -> Result<()> {
+        if bytes.len() + 1 > MAX_PAYLOAD {
+            return Err(Error::Unsupported);
+        }
+        let mut payload = vec![MSG_CSI];
         payload.extend_from_slice(bytes);
         self.seal_and_send(&payload)
     }

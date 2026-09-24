@@ -25,6 +25,7 @@ use rusty_esp_iroh_core::rpc::{Request, Response, RpcError};
 use rusty_esp_iroh_core::ticket::Ticket;
 use rusty_esp_iroh_host::Client;
 use rusty_esp_iroh_host::client::endpoint_addr;
+use rusty_esp_iroh_host::csi;
 use rusty_esp_iroh_host::presence;
 
 /// The one key this example acts as. Deterministic on purpose: a device it
@@ -202,6 +203,12 @@ async fn main() {
             let mut last_ts = 0u64;
             let mut largest = 0usize;
             let mut readings = 0u64;
+            let mut csi_samples = 0u64;
+            // With an out-dir, every CSI sample becomes one line of
+            // csi.csv, the ledger's fixture format: the recording rig.
+            let mut csv = out_dir
+                .as_ref()
+                .map(|d| std::fs::File::create(d.join("csi.csv")).expect("csi.csv"));
             // The device's DID names its own "tlm " records; a bridge's
             // "nbrt" packets name their neighbour themselves.
             let own_did = client
@@ -243,13 +250,21 @@ async fn main() {
                             readings += 1;
                             println!("{}", serde_json::to_string(&r).unwrap_or_default());
                         }
+                        // A CSI sample (W5): counted, and recorded when asked.
+                        if let Some(r) = csi::from_packet(h.codec, payload, &own_did) {
+                            csi_samples += 1;
+                            if let Some(f) = csv.as_mut() {
+                                use std::io::Write as _;
+                                let _ = writeln!(f, "{}", csi::csv_row(&r.sample));
+                            }
+                        }
                     },
                 )
                 .await
                 .expect("subscribe");
             let elapsed = wall.elapsed().as_secs_f64();
             println!(
-                "media {secs}s: received={} lost={} reordered={} bytes={} ({:.1} pkt/s) readings={readings}",
+                "media {secs}s: received={} lost={} reordered={} bytes={} ({:.1} pkt/s) readings={readings} csi={csi_samples}",
                 counter.received,
                 counter.lost,
                 counter.reordered,

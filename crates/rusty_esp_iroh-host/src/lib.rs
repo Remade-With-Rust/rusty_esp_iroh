@@ -17,6 +17,7 @@ pub use rusty_esp_iroh_core as core;
 
 pub mod client;
 pub mod crypto;
+pub mod csi;
 pub mod error;
 pub mod identity;
 pub mod mjpeg;
