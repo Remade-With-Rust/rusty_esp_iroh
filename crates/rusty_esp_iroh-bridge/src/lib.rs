@@ -33,6 +33,7 @@ use rusty_esp_core::hal::Rng;
 use rusty_esp_core::time::Micros;
 use rusty_esp_iroh_core::media::{FLAG_KEY, PacketHeader, Subscribe};
 use rusty_esp_iroh_core::rpc::NeighbourInfo;
+use rusty_esp_iroh_core::telemetry::PresenceInfo;
 use rusty_esp_iroh_host::MediaSource;
 use rusty_esp_iroh_host::node::{MediaFactory, NeighbourSource};
 
@@ -91,6 +92,11 @@ impl NeighbourSource for CoreHandle {
     fn neighbours(&self) -> Vec<NeighbourInfo> {
         let now = self.now();
         self.with(|c| c.table(now))
+    }
+
+    fn presence(&self) -> Vec<PresenceInfo> {
+        let now = self.now();
+        self.with(|c| c.presence(now))
     }
 }
 

@@ -22,19 +22,21 @@ use rusty_esp_core::error::{Error, Result};
 use rusty_esp_core::hal::Rng;
 use rusty_esp_core::time::Micros;
 use rusty_esp_iroh_core::rpc::NeighbourInfo;
+use rusty_esp_iroh_core::telemetry::PresenceInfo;
+use rusty_esp_iroh_host::presence::info as presence_info;
 use rusty_esp_mid_core::did::Did;
 use rusty_esp_mid_core::key::DeviceKey;
 use rusty_esp_mid_core::manifest::verify_manifest;
 use rusty_esp_signal_core::link::{
     CONFIRM_LEN, DEFAULT_LIFETIME, HELLO_LEN, Handshake, Pending, Session, VERSION,
 };
+use rusty_esp_signal_core::radar::presence::Presence;
 use serde::{Deserialize, Serialize};
 
 use crate::DynRng;
 use crate::radio::PeerAddr;
 
-/// The media codec tag of re-framed neighbour telemetry.
-pub const CODEC_NEIGHBOUR_TELEMETRY: [u8; 4] = *b"nbrt";
+pub use rusty_esp_iroh_core::telemetry::{CODEC_NEIGHBOUR_TELEMETRY, NeighbourPacket};
 /// Sealed-payload kind: a manifest part.
 pub const MSG_MANIFEST: u8 = 0x01;
 /// Sealed-payload kind: telemetry.
@@ -63,17 +65,6 @@ impl Reach {
             Reach::Lora => "lora",
         }
     }
-}
-
-/// What rides in one `nbrt` media packet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NeighbourPacket {
-    /// The neighbour's DID.
-    pub did: String,
-    /// [`Reach::tag`].
-    pub reach: String,
-    /// The telemetry bytes as the neighbour sent them.
-    pub payload: Vec<u8>,
 }
 
 /// What the core reports as it goes.
@@ -149,6 +140,10 @@ struct Slot {
     reach: Reach,
     state: State,
     last_seen: Micros,
+    /// The last presence record it sent that decoded, for `janusPresence`;
+    /// cleared when a new session starts, so a reading is never older than
+    /// the link it arrived on.
+    latest: Option<PresenceInfo>,
 }
 
 /// Every neighbour's state, driven one frame at a time. No threads, no
@@ -269,12 +264,14 @@ impl BridgeCore {
                 self.slots[i].state = State::Pending(Box::new(pending));
                 self.slots[i].last_seen = now;
                 self.slots[i].reach = reach;
+                self.slots[i].latest = None;
             }
             None => self.slots.push(Slot {
                 addr: from,
                 reach,
                 state: State::Pending(Box::new(pending)),
                 last_seen: now,
+                latest: None,
             }),
         }
         Ok(Some(accept.to_vec()))
@@ -350,12 +347,22 @@ impl BridgeCore {
         match payload.first() {
             Some(&MSG_TELEMETRY) => {
                 self.counters.telemetry += 1;
+                let did = linked.did_string.clone();
+                // A presence record (the signal crate's, version 1 or 2) is
+                // kept as the neighbour's latest reading; any other
+                // telemetry rides through as the bytes it is.
+                let latest = Presence::decode(&payload[1..])
+                    .ok()
+                    .map(|p| presence_info(&did, reach.tag(), &p, now));
                 self.events.push(Event::Telemetry {
-                    did: linked.did_string.clone(),
+                    did,
                     reach,
                     payload: payload[1..].to_vec(),
                     at: now,
                 });
+                if latest.is_some() {
+                    self.slots[i].latest = latest;
+                }
                 Ok(())
             }
             Some(&MSG_MANIFEST) if payload.len() >= 3 => {
@@ -426,6 +433,21 @@ impl BridgeCore {
                         last_seen_us: now.since(s.last_seen),
                     })
                 }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The latest presence reading of every neighbour with a live session,
+    /// for the sidecar's `janusPresence`: what the device last sent that
+    /// decoded as a record. A neighbour whose telemetry was never a record
+    /// is not listed; a reading lapses with the session it arrived on.
+    #[must_use]
+    pub fn presence(&self, now: Micros) -> Vec<PresenceInfo> {
+        self.slots
+            .iter()
+            .filter_map(|s| match &s.state {
+                State::Linked(l) if !l.session.expired(now) => s.latest.clone(),
                 _ => None,
             })
             .collect()

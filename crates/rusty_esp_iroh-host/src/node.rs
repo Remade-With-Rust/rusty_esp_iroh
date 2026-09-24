@@ -32,6 +32,7 @@ use rusty_esp_iroh_core::ota::{CHUNK_LEN, OtaManifest, OtaSession, OtaSink, Refu
 use rusty_esp_iroh_core::rpc::NeighbourInfo;
 use rusty_esp_iroh_core::rpc::{self, Envelope, Request, Response, RpcError, Telemetry};
 use rusty_esp_iroh_core::sidecar::{self, DeviceInfo, PairState, Tier};
+use rusty_esp_iroh_core::telemetry::PresenceInfo;
 use rusty_esp_iroh_core::ticket::{MAX_TEXT_LEN, Ticket};
 
 use crate::error::{HostError, Result};
@@ -85,6 +86,12 @@ impl Default for NodeConfig {
 pub trait NeighbourSource: Send + Sync {
     /// Every neighbour with a verified manifest, as the wire form.
     fn neighbours(&self) -> Vec<NeighbourInfo>;
+    /// The latest presence reading of every neighbour that sent one, for
+    /// the sidecar's `janusPresence`. Nothing by default: a source that
+    /// fronts devices but reads no telemetry answers an empty table.
+    fn presence(&self) -> Vec<PresenceInfo> {
+        Vec::new()
+    }
 }
 
 /// The optional seams a node may be bound with: the maker it trusts for
@@ -631,7 +638,8 @@ impl ProtocolHandler for Ota {
                     Ok(mut sink) => {
                         log::info!(
                             "ota: admitted {} ({} bytes) from the owner; writing",
-                            manifest.firmware, manifest.image_len
+                            manifest.firmware,
+                            manifest.image_len
                         );
                         let outcome = match OtaSession::begin(manifest.clone(), sink.as_mut()) {
                             Err(r) => Err(r),
@@ -743,12 +751,19 @@ impl ProtocolHandler for Sidecar {
             .as_ref()
             .map(|n| n.neighbours())
             .unwrap_or_default();
+        let presence = self
+            .0
+            .neighbours
+            .as_ref()
+            .map(|n| n.presence())
+            .unwrap_or_default();
         let reply = sidecar::handle(
             &request,
             &info,
             Some((&self.0.manifest, &self.0.manifest_sig)),
             Some(&ticket),
             &neighbours,
+            &presence,
         );
         self.0.counters.sidecar.fetch_add(1, Ordering::Relaxed);
         send.write_all(&reply)
@@ -794,14 +809,24 @@ impl ProtocolHandler for Media {
         // cap+1 panicked the XIAO on (condvar could not be created, out of
         // internal RAM; Run 5, 2026-09-17). The reserve is atomic, so cap+1
         // handlers racing cannot all pass.
-        let prev = self.state.counters.media_live.fetch_add(1, Ordering::AcqRel);
+        let prev = self
+            .state
+            .counters
+            .media_live
+            .fetch_add(1, Ordering::AcqRel);
         if self.max > 0 && prev >= self.max {
-            self.state.counters.media_live.fetch_sub(1, Ordering::AcqRel);
+            self.state
+                .counters
+                .media_live
+                .fetch_sub(1, Ordering::AcqRel);
             self.state
                 .counters
                 .media_refused
                 .fetch_add(1, Ordering::Relaxed);
-            log::warn!("media: refused a subscriber: {prev} of {} already served", self.max);
+            log::warn!(
+                "media: refused a subscriber: {prev} of {} already served",
+                self.max
+            );
             connection.close(1u32.into(), b"busy");
             return Ok(());
         }

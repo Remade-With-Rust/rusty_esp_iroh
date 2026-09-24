@@ -16,6 +16,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::rpc::NeighbourInfo;
+use crate::telemetry::PresenceInfo;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -244,6 +245,7 @@ pub fn catalog() -> Value {
         op("janus", "GET", "/v1/janus/manifest", "janusManifest"),
         op("janus", "GET", "/v1/janus/ticket", "janusTicket"),
         op("janus", "GET", "/v1/janus/neighbours", "janusNeighbours"),
+        op("janus", "GET", "/v1/janus/presence", "janusPresence"),
     ])
 }
 
@@ -252,7 +254,9 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// Answer one sidecar request. `manifest` is the encoded capability manifest
-/// with its device signature; `ticket_text` the current `janus1…` ticket.
+/// with its device signature; `ticket_text` the current `janus1…` ticket;
+/// `neighbours` the devices a bridge fronts and `presence` their latest
+/// readings (both empty on a device that fronts none).
 #[must_use]
 pub fn handle(
     request_bytes: &[u8],
@@ -260,9 +264,10 @@ pub fn handle(
     manifest: Option<(&[u8], &[u8; 64])>,
     ticket_text: Option<&str>,
     neighbours: &[NeighbourInfo],
+    presence: &[PresenceInfo],
 ) -> Vec<u8> {
     let reply = match serde_json::from_slice::<RpcRequest>(request_bytes) {
-        Ok(req) => dispatch(&req, info, manifest, ticket_text, neighbours),
+        Ok(req) => dispatch(&req, info, manifest, ticket_text, neighbours, presence),
         Err(e) => RpcReply::err(format!("malformed RpcRequest: {e}")),
     };
     serde_json::to_vec(&reply)
@@ -275,6 +280,7 @@ fn dispatch(
     manifest: Option<(&[u8], &[u8; 64])>,
     ticket_text: Option<&str>,
     neighbours: &[NeighbourInfo],
+    presence: &[PresenceInfo],
 ) -> RpcReply {
     match req.op.as_str() {
         "ping" => RpcReply::ok(json!({ "ping": PING_REPLY })),
@@ -321,6 +327,13 @@ fn dispatch(
                     "last_seen_ms": n.last_seen_us / 1000,
                 }))
                 .collect::<Vec<_>>(),
+        })),
+        // The latest presence reading of every device this node fronts
+        // (W3's receiving end): the record's own fields, a rate only when
+        // the sensor accepted it. Empty is an answer, not an error.
+        "janusPresence" => RpcReply::ok(json!({
+            "did": info.did,
+            "presence": presence,
         })),
         other => RpcReply::err(format!("unknown op {other}")),
     }
@@ -394,6 +407,54 @@ mod tests {
     }
 
     #[test]
+    fn answers_janus_presence_with_the_readings_it_was_handed() {
+        let addrs: [&str; 0] = [];
+        let i = info(&addrs);
+        let reading = PresenceInfo {
+            did: String::from("did:mata:z6Mk"),
+            reach: String::from("espnow"),
+            at_us: 1_234_567,
+            received_us: 99,
+            state: String::from("moving"),
+            moving_cm: 0,
+            moving_energy: 40,
+            stationary_cm: 0,
+            stationary_energy: 0,
+            detection_cm: 0,
+            breathing_bpm_x10: 152,
+            breathing_confidence: 610,
+            heart_bpm_x10: 0,
+            heart_confidence: 70,
+            fingerprint: 180,
+        };
+        let bytes = handle(
+            br#"{"op":"janusPresence"}"#,
+            &i,
+            None,
+            None,
+            &[],
+            core::slice::from_ref(&reading),
+        );
+        let r: RpcReply = serde_json::from_slice(&bytes).unwrap();
+        assert!(r.ok);
+        let body = r.body.unwrap();
+        let table = body["presence"].as_array().unwrap();
+        assert_eq!(table.len(), 1);
+        assert_eq!(table[0]["did"], "did:mata:z6Mk");
+        assert_eq!(table[0]["state"], "moving");
+        assert_eq!(table[0]["breathing_bpm_x10"], 152);
+        assert_eq!(table[0]["breathing_confidence"], 610);
+        assert_eq!(table[0]["heart_bpm_x10"], 0, "flagged: confidence, no rate");
+        assert_eq!(table[0]["heart_confidence"], 70);
+        assert_eq!(table[0]["fingerprint"], 180);
+        // Nothing to report is an empty table, not an error.
+        let bytes = handle(br#"{"op":"janusPresence"}"#, &i, None, None, &[], &[]);
+        let r: RpcReply = serde_json::from_slice(&bytes).unwrap();
+        assert!(r.ok);
+        assert!(r.body.unwrap()["presence"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
     fn answers_ping_catalog_status_and_janus_ops() {
         let addrs: [&str; 0] = [];
         let i = info(&addrs);
@@ -405,6 +466,7 @@ mod tests {
                 Some((&[1, 2, 3], &sig)),
                 Some("janus1abc"),
                 &[],
+                &[],
             ))
             .unwrap()
         };
@@ -412,7 +474,7 @@ mod tests {
         assert!(p.ok);
         assert_eq!(p.body.unwrap()["ping"], PING_REPLY);
         let c = reply(r#"{"op":"catalog"}"#);
-        assert_eq!(c.body.unwrap().as_array().unwrap().len(), 6);
+        assert_eq!(c.body.unwrap().as_array().unwrap().len(), 7);
         let s = reply(r#"{"op":"status","authorization":"ignored"}"#);
         let body = s.body.unwrap();
         assert_eq!(body["pair"], "open");
@@ -426,7 +488,7 @@ mod tests {
         assert!(!u.ok);
         assert_eq!(u.error.unwrap(), "unknown op signin");
         let bad: RpcReply =
-            serde_json::from_slice(&handle(b"not json", &i, None, None, &[])).unwrap();
+            serde_json::from_slice(&handle(b"not json", &i, None, None, &[], &[])).unwrap();
         assert!(!bad.ok);
         assert!(bad.error.unwrap().starts_with("malformed RpcRequest"));
     }

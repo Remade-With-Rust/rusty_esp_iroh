@@ -1038,3 +1038,32 @@ valid hello, no answer (`denied == 1`, not listed, its `link` times out).
 The node's side is `rusty_esp_signal#8` (the C6 answers the one DID in
 `JANUS_LINK_PEER`); espino's generated Track B sketch follows on its main.
 Branch `link/roster`, PR #2. Nothing has run on a board.
+
+---
+
+## 2026-09-23 — the presence record is read on the home computer's side
+
+W3 (espino's RuView plan) widened the record to version 2 and traced its
+path to the home computer; at the end of it nothing read the bytes. Now:
+
+- **core** `telemetry::{CODEC_TELEMETRY, CODEC_NEIGHBOUR_TELEMETRY,
+  NeighbourPacket, PresenceInfo}` — the wire types and the reading as
+  JSON, the record's own fields, a rate non-zero only when the sensor
+  accepted it. `sidecar::handle` answers **`janusPresence`** with the
+  readings it is handed; an empty table is an answer, not an error. No
+  decoder here.
+- **host** `presence::from_packet`: `"tlm "` is the subscribed device's
+  own record, `"nbrt"` a bridge's neighbour packet naming its device;
+  anything else is `None`, not a guess. A version 1 record reads with the
+  new fields zero. The reference client prints one JSON line per reading.
+- **bridge** keeps the latest reading per neighbour on its slot, cleared
+  on a new session, gone when the session lapses.
+
+The bridge test sends one real version-2 record from the C6 and reads it
+back through the sidecar: rates, the flagged heart's confidence with no
+rate, the fingerprint, the device clock; the LoRa node's byte telemetry
+yields no reading. Branch `w3/presence-receiver` on `link/roster`.
+
+Known and older than this: `rusty_esp_iroh-core --features alloc` does
+not build for riscv32imac (`rusty_json_turbo`'s `AtomicU64`), identically
+on the base — the trap rusty_zstd hit; a seam for it is its own change.
