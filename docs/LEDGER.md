@@ -1014,3 +1014,27 @@ building.
 lives, so a board flashed with the new table mints a NEW DID; the old one is
 in a partition nothing reads any more. That is correct and it is a one-way
 step for any device already carrying an identity.
+
+---
+
+## 2026-09-23 — the bridge answers a roster, not anyone
+
+`BridgeCore`'s handshake was `|_| true`: any DID with a valid key got an
+accept and a session, and the bridge would front it to the home computer.
+The RuView plan (espino, W5) named it as the thing to fix before sensing
+data rides the link; the S1 runbook's "reject unadopted" arm assumed it.
+
+`BridgeCore::allow` / `disallow` / `roster`. The bridge answers the DIDs
+on its roster and no others. **An empty roster refuses everyone; it never
+admits everyone.** A refusal happens where `Handshake::respond` asks,
+before any key material is derived; it is counted
+(`BridgeCounters::denied`), reported (`Event::Refused`, "not on the
+roster"), and answered with silence, so a refused peer learns nothing.
+The example takes `--allow did:mata:…`, repeatable, and says loudly when
+none was given.
+
+The test links its three neighbours and refuses a fourth: a valid key, a
+valid hello, no answer (`denied == 1`, not listed, its `link` times out).
+The node's side is `rusty_esp_signal#8` (the C6 answers the one DID in
+`JANUS_LINK_PEER`); espino's generated Track B sketch follows on its main.
+Branch `link/roster`, PR #2. Nothing has run on a board.
