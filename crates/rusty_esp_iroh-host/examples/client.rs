@@ -25,6 +25,7 @@ use rusty_esp_iroh_core::rpc::{Request, Response, RpcError};
 use rusty_esp_iroh_core::ticket::Ticket;
 use rusty_esp_iroh_host::Client;
 use rusty_esp_iroh_host::client::endpoint_addr;
+use rusty_esp_iroh_host::presence;
 
 /// The one key this example acts as. Deterministic on purpose: a device it
 /// adopts must still recognise it on the next run, and a bench that mints a
@@ -175,9 +176,7 @@ async fn main() {
             let manifest: OtaManifest =
                 serde_json::from_slice(&std::fs::read(&manifest_path).expect("read manifest"))
                     .expect("parse manifest");
-            let outcome = client
-                .ota(&addr, &device_did, &manifest, &image)
-                .await;
+            let outcome = client.ota(&addr, &device_did, &manifest, &image).await;
             match outcome {
                 Ok(o) => println!("ota: {o:?} in {:?}", started.elapsed()),
                 Err(e) => println!("ota: error {e:?} in {:?}", started.elapsed()),
@@ -202,6 +201,14 @@ async fn main() {
             let mut first_ts = None;
             let mut last_ts = 0u64;
             let mut largest = 0usize;
+            let mut readings = 0u64;
+            // The device's DID names its own "tlm " records; a bridge's
+            // "nbrt" packets name their neighbour themselves.
+            let own_did = client
+                .manifest(&addr)
+                .await
+                .map(|m| m.did)
+                .unwrap_or_default();
             let wall = Instant::now();
             let counter = client
                 .subscribe(
@@ -224,13 +231,25 @@ async fn main() {
                                 written += 1;
                             }
                         }
+                        // A presence record, from the device or from a
+                        // bridge's neighbour: one JSON line each, the
+                        // record's own fields (W3's receiving end).
+                        if let Some(r) = presence::from_packet(
+                            h.codec,
+                            payload,
+                            &own_did,
+                            rusty_esp_core::time::Micros(unix_micros()),
+                        ) {
+                            readings += 1;
+                            println!("{}", serde_json::to_string(&r).unwrap_or_default());
+                        }
                     },
                 )
                 .await
                 .expect("subscribe");
             let elapsed = wall.elapsed().as_secs_f64();
             println!(
-                "media {secs}s: received={} lost={} reordered={} bytes={} ({:.1} pkt/s)",
+                "media {secs}s: received={} lost={} reordered={} bytes={} ({:.1} pkt/s) readings={readings}",
                 counter.received,
                 counter.lost,
                 counter.reordered,
@@ -416,4 +435,11 @@ async fn main() {
         other => eprintln!("unknown op {other}"),
     }
     client.close().await;
+}
+
+/// The home computer's clock, Unix microseconds, for a reading's `received_us`.
+fn unix_micros() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
 }

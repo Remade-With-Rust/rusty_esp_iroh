@@ -22,6 +22,7 @@ use rusty_esp_iroh_host::{Client, Extras, Node, NodeConfig, NodeIdentity};
 use rusty_esp_mid_core::did::Did;
 use rusty_esp_mid_core::key::DeviceKey;
 use rusty_esp_mid_core::manifest::verify_manifest;
+use rusty_esp_signal_core::radar::presence::{ENCODED_LEN, Occupancy, Presence};
 
 const BRIDGE: PeerAddr = [0x10, 0, 0, 0, 0, 0, 0, 0];
 const C6: PeerAddr = [0x01, 0xC6, 0, 0, 0, 0, 0, 0];
@@ -172,9 +173,25 @@ async fn neighbours_appear_through_the_bridge_with_their_own_signed_manifests() 
     c6.send_manifest().unwrap();
     lora.send_manifest().unwrap();
     impostor.send_manifest().unwrap();
-    for i in 0..5u8 {
+    for i in 0..4u8 {
         c6.send_telemetry(&[0xC6, i]).unwrap();
     }
+    // ...and one real presence record, version 2, as C9's sketch sends it:
+    // breathing accepted, heart flagged (confidence, no rate), a fingerprint.
+    let record = Presence {
+        state: Occupancy::Moving,
+        moving_energy: 40,
+        at: rusty_esp_core::time::Micros(1_234_567),
+        breathing_bpm_x10: 152,
+        breathing_confidence: 610,
+        heart_bpm_x10: 0,
+        heart_confidence: 70,
+        fingerprint: 180,
+        ..Presence::default()
+    };
+    let mut wire = [0u8; ENCODED_LEN];
+    let n = record.encode(&mut wire).unwrap();
+    c6.send_telemetry(&wire[..n]).unwrap();
     for i in 0..3u8 {
         lora.send_telemetry(&[0x1A, i]).unwrap();
     }
@@ -238,6 +255,29 @@ async fn neighbours_appear_through_the_bridge_with_their_own_signed_manifests() 
     assert_eq!(own.did, bridge_did);
     assert_eq!(own.parsed.model, "janus/bridge-pi");
     assert!(own.parsed.has(Capability::EspNow));
+    // W3's receiving end: the latest reading per neighbour, decoded on the
+    // bridge from the record the C6 sent, through the sidecar the home
+    // computer reads. The LoRa node's telemetry was bytes, not a record, so
+    // it has no reading; the impostor's and the stranger's never arrive.
+    let reply = client
+        .sidecar(&addr, r#"{"op":"janusPresence"}"#)
+        .await
+        .unwrap();
+    assert!(reply.ok, "{reply:?}");
+    let body = reply.body.unwrap();
+    let readings = body["presence"].as_array().unwrap();
+    assert_eq!(readings.len(), 1, "{readings:?}");
+    let r = &readings[0];
+    assert_eq!(r["did"], c6.did_string());
+    assert_eq!(r["reach"], "espnow");
+    assert_eq!(r["state"], "moving");
+    assert_eq!(r["moving_energy"], 40);
+    assert_eq!(r["at_us"], 1_234_567);
+    assert_eq!(r["breathing_bpm_x10"], 152);
+    assert_eq!(r["breathing_confidence"], 610);
+    assert_eq!(r["heart_bpm_x10"], 0, "a flagged estimate sends no rate");
+    assert_eq!(r["heart_confidence"], 70);
+    assert_eq!(r["fingerprint"], 180);
     // And the same table over the home computer's sidecar RPC (N4).
     let reply = client
         .sidecar(&addr, r#"{"op":"janusNeighbours"}"#)

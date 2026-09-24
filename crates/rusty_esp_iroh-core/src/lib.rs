@@ -42,6 +42,8 @@ pub mod ota;
 pub mod rpc;
 #[cfg(feature = "alloc")]
 pub mod sidecar;
+#[cfg(feature = "alloc")]
+pub mod telemetry;
 
 pub use binding::Binding;
 pub use ticket::Ticket;

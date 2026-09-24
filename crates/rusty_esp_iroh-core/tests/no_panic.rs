@@ -218,6 +218,7 @@ fn sidecar_handler_never_panics() {
                 Some((manifest_bytes, &sig)),
                 Some("janus1abc"),
                 &[],
+                &[],
             );
             assert!(!reply.is_empty());
         });
