@@ -33,7 +33,7 @@ use rusty_esp_core::hal::Rng;
 use rusty_esp_core::time::Micros;
 use rusty_esp_iroh_core::media::{FLAG_KEY, PacketHeader, Subscribe};
 use rusty_esp_iroh_core::rpc::NeighbourInfo;
-use rusty_esp_iroh_core::telemetry::PresenceInfo;
+use rusty_esp_iroh_core::telemetry::{CODEC_NEIGHBOUR_CSI, PresenceInfo};
 use rusty_esp_iroh_host::MediaSource;
 use rusty_esp_iroh_host::node::{MediaFactory, NeighbourSource};
 
@@ -190,18 +190,26 @@ impl Bridge {
     }
 
     /// The media factory: a subscriber asking for [`CODEC_NEIGHBOUR_TELEMETRY`]
-    /// gets every neighbour's telemetry as [`NeighbourPacket`]s; anything
-    /// else gets an empty stream.
+    /// gets every neighbour's telemetry as [`NeighbourPacket`]s, one asking
+    /// for [`CODEC_NEIGHBOUR_CSI`] every neighbour's CSI samples (the W5
+    /// stream), `any ` both; anything else gets an empty stream.
     #[must_use]
     pub fn media_factory(&self) -> MediaFactory {
         let subscribers = self.subscribers.clone();
         Arc::new(move |sub: &Subscribe| -> Box<dyn MediaSource> {
-            if sub.codec != CODEC_NEIGHBOUR_TELEMETRY && sub.codec != *b"any " {
+            if sub.codec != CODEC_NEIGHBOUR_TELEMETRY
+                && sub.codec != CODEC_NEIGHBOUR_CSI
+                && sub.codec != *b"any "
+            {
                 return Box::new(Empty);
             }
             let (tx, rx) = mpsc::sync_channel(256);
             subscribers.lock().expect("subscribers").push(tx);
-            Box::new(NeighbourMedia { rx, seq: 0 })
+            Box::new(NeighbourMedia {
+                rx,
+                seq: 0,
+                want: sub.codec,
+            })
         })
     }
 
@@ -220,42 +228,60 @@ impl Drop for Bridge {
     }
 }
 
-/// Neighbour telemetry as `janus/media/1` packets.
+/// Neighbour telemetry and CSI as `janus/media/1` packets, whichever the
+/// subscriber asked for (`want`).
 struct NeighbourMedia {
     rx: Receiver<Event>,
     seq: u32,
+    want: [u8; 4],
+}
+
+impl NeighbourMedia {
+    fn wants(&self, codec: [u8; 4]) -> bool {
+        self.want == codec || self.want == *b"any "
+    }
 }
 
 impl MediaSource for NeighbourMedia {
     fn next_packet(&mut self) -> Option<(PacketHeader, Vec<u8>)> {
         loop {
-            match self.rx.recv_timeout(Duration::from_secs(1)) {
-                Ok(Event::Telemetry {
-                    did,
-                    reach,
-                    payload,
-                    at,
-                }) => {
-                    let packet = NeighbourPacket {
+            let (did, reach, payload, at, codec) =
+                match self.rx.recv_timeout(Duration::from_secs(1)) {
+                    Ok(Event::Telemetry {
                         did,
-                        reach: String::from(reach.tag()),
+                        reach,
                         payload,
-                    };
-                    let bytes = postcard::to_stdvec(&packet).ok()?;
-                    let header = PacketHeader {
-                        seq: self.seq,
-                        timestamp_us: at.0,
-                        codec: CODEC_NEIGHBOUR_TELEMETRY,
-                        flags: FLAG_KEY,
-                        len: bytes.len() as u32,
-                    };
-                    self.seq = self.seq.wrapping_add(1);
-                    return Some((header, bytes));
-                }
-                Ok(_) => continue,
-                Err(RecvTimeoutError::Timeout) => continue,
-                Err(RecvTimeoutError::Disconnected) => return None,
-            }
+                        at,
+                    }) if self.wants(CODEC_NEIGHBOUR_TELEMETRY) => {
+                        (did, reach, payload, at, CODEC_NEIGHBOUR_TELEMETRY)
+                    }
+                    Ok(Event::Csi {
+                        did,
+                        reach,
+                        payload,
+                        at,
+                    }) if self.wants(CODEC_NEIGHBOUR_CSI) => {
+                        (did, reach, payload, at, CODEC_NEIGHBOUR_CSI)
+                    }
+                    Ok(_) => continue,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => return None,
+                };
+            let packet = NeighbourPacket {
+                did,
+                reach: String::from(reach.tag()),
+                payload,
+            };
+            let bytes = postcard::to_stdvec(&packet).ok()?;
+            let header = PacketHeader {
+                seq: self.seq,
+                timestamp_us: at.0,
+                codec,
+                flags: FLAG_KEY,
+                len: bytes.len() as u32,
+            };
+            self.seq = self.seq.wrapping_add(1);
+            return Some((header, bytes));
         }
     }
 

@@ -41,6 +41,9 @@ pub use rusty_esp_iroh_core::telemetry::{CODEC_NEIGHBOUR_TELEMETRY, NeighbourPac
 pub const MSG_MANIFEST: u8 = 0x01;
 /// Sealed-payload kind: telemetry.
 pub const MSG_TELEMETRY: u8 = 0x02;
+/// Sealed-payload kind: one CSI sample (the W5 stream), the bytes of a
+/// `radar::csi_stream::Sample`. Re-framed under `nbrc`, never decoded here.
+pub const MSG_CSI: u8 = 0x03;
 /// Most parts a manifest may arrive in (≈ 900 bytes of manifest + signature).
 pub const MAX_MANIFEST_PARTS: usize = 4;
 /// The link's handshake kind bytes (`rusty_esp_signal::link`, wire constants).
@@ -93,6 +96,17 @@ pub enum Event {
         /// Bridge clock at receipt.
         at: Micros,
     },
+    /// One CSI sample from a neighbour (the W5 stream).
+    Csi {
+        /// Its DID.
+        did: String,
+        /// Its radio.
+        reach: Reach,
+        /// The sample's bytes, as the neighbour sent them.
+        payload: Vec<u8>,
+        /// Bridge clock at receipt.
+        at: Micros,
+    },
     /// Something was refused, with the reason (a log line, never a panic).
     Refused {
         /// The radio address it came from.
@@ -118,6 +132,8 @@ pub struct BridgeCounters {
     pub manifests_bad: u32,
     /// Telemetry frames accepted.
     pub telemetry: u32,
+    /// CSI samples accepted (the W5 stream).
+    pub csi: u32,
     /// Frames from unknown addresses or that failed to open.
     pub dropped: u32,
 }
@@ -363,6 +379,16 @@ impl BridgeCore {
                 if latest.is_some() {
                     self.slots[i].latest = latest;
                 }
+                Ok(())
+            }
+            Some(&MSG_CSI) => {
+                self.counters.csi += 1;
+                self.events.push(Event::Csi {
+                    did: linked.did_string.clone(),
+                    reach,
+                    payload: payload[1..].to_vec(),
+                    at: now,
+                });
                 Ok(())
             }
             Some(&MSG_MANIFEST) if payload.len() >= 3 => {

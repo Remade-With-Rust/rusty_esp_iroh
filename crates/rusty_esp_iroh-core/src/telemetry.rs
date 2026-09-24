@@ -4,7 +4,8 @@
 //! A std device pushes its presence record through the facade's
 //! `mesh::push_telemetry`, which frames it under [`CODEC_TELEMETRY`]; a
 //! bridge re-frames each neighbour's record as a [`NeighbourPacket`] under
-//! [`CODEC_NEIGHBOUR_TELEMETRY`]. The record itself is
+//! [`CODEC_NEIGHBOUR_TELEMETRY`]. The CSI stream (W5) rides the same way:
+//! [`CODEC_CSI`] from a device, [`CODEC_NEIGHBOUR_CSI`] through a bridge. The record itself is
 //! `rusty_esp_signal_core::radar::presence::Presence` -- version 2 since
 //! W3: breathing and heart with confidences, a fingerprint distance. This
 //! crate does not decode it: the decoder is the signal crate's, and the host
@@ -25,6 +26,15 @@ pub const CODEC_TELEMETRY: [u8; 4] = *b"tlm ";
 /// A bridge's neighbour telemetry: every packet a postcard
 /// [`NeighbourPacket`], the neighbour's DID beside its bytes.
 pub const CODEC_NEIGHBOUR_TELEMETRY: [u8; 4] = *b"nbrt";
+
+/// A std device's own CSI stream (the RuView plan's W5): every packet one
+/// `rusty_esp_signal_core::radar::csi_stream::Sample`, raw I/Q as the radio
+/// delivered it. The facade's `mesh::CODEC_CSI`, mirrored here.
+pub const CODEC_CSI: [u8; 4] = *b"csi ";
+
+/// A bridge's neighbour CSI: every packet a postcard [`NeighbourPacket`]
+/// whose payload is one CSI sample.
+pub const CODEC_NEIGHBOUR_CSI: [u8; 4] = *b"nbrc";
 
 /// What rides in one [`CODEC_NEIGHBOUR_TELEMETRY`] media packet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

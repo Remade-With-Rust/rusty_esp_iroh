@@ -17,11 +17,14 @@ use rusty_esp_iroh_bridge::{
 };
 use rusty_esp_iroh_core::media::Subscribe;
 use rusty_esp_iroh_core::rpc::{Request, Response};
+use rusty_esp_iroh_core::telemetry::CODEC_NEIGHBOUR_CSI;
 use rusty_esp_iroh_host::client::endpoint_addr;
+use rusty_esp_iroh_host::csi;
 use rusty_esp_iroh_host::{Client, Extras, Node, NodeConfig, NodeIdentity};
 use rusty_esp_mid_core::did::Did;
 use rusty_esp_mid_core::key::DeviceKey;
 use rusty_esp_mid_core::manifest::verify_manifest;
+use rusty_esp_signal_core::radar::csi_stream::{MAX_ENCODED_LEN, Sample, TAG_LLTF_20MHZ};
 use rusty_esp_signal_core::radar::presence::{ENCODED_LEN, Occupancy, Presence};
 
 const BRIDGE: PeerAddr = [0x10, 0, 0, 0, 0, 0, 0, 0];
@@ -323,9 +326,64 @@ async fn neighbours_appear_through_the_bridge_with_their_own_signed_manifests() 
         })
         .await
         .unwrap();
-    let (c6, lora) = sender.await.unwrap();
+    let (mut c6, lora) = sender.await.unwrap();
     assert_eq!(counter.received, 8, "{counter:?}");
     assert_eq!(counter.lost, 0);
+
+    // The W5 stream: three CSI samples from the C6, through the bridge, to
+    // a subscriber of "nbrc" -- counted end to end and decoded, the way C2
+    // was counted. Raw I/Q, so the receiver computes the device's features.
+    let csi_sub = Subscribe {
+        codec: CODEC_NEIGHBOUR_CSI,
+        max_fps: 0,
+        max_kbps: 0,
+    };
+    let mut samples: Vec<csi::Received> = Vec::new();
+    let sender = tokio::task::spawn_blocking(move || {
+        std::thread::sleep(Duration::from_millis(500));
+        for k in 0..3u8 {
+            let iq: Vec<i8> = (0..128u8)
+                .map(|i| i8::try_from(i32::from(i % 7) - 3 + i32::from(k)).unwrap())
+                .collect();
+            let sample = Sample::from_iq(
+                rusty_esp_core::time::Micros(20_000 * u64::from(k)),
+                -41,
+                6,
+                TAG_LLTF_20MHZ,
+                &iq,
+            )
+            .unwrap();
+            let mut wire = [0u8; MAX_ENCODED_LEN];
+            let n = sample.encode(&mut wire).unwrap();
+            c6.send_csi(&wire[..n]).unwrap();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        c6
+    });
+    let csi_counter = subscriber
+        .subscribe(&addr, &csi_sub, 3, Duration::from_secs(10), |h, payload| {
+            assert_eq!(h.codec, CODEC_NEIGHBOUR_CSI);
+            samples.push(csi::from_packet(h.codec, payload, "").expect("a sample"));
+        })
+        .await
+        .unwrap();
+    let c6 = sender.await.unwrap();
+    assert_eq!(csi_counter.received, 3, "{csi_counter:?}");
+    assert_eq!(csi_counter.lost, 0);
+    assert_eq!(samples.len(), 3);
+    assert!(
+        samples
+            .iter()
+            .all(|s| s.did == c6.did_string() && s.reach == "espnow"),
+        "{samples:?}"
+    );
+    assert_eq!(samples[2].sample.at.0, 40_000);
+    assert_eq!(samples[0].sample.len, 128);
+    assert!(
+        samples[0].sample.features().is_ok(),
+        "a known layout tag computes the device's features at the receiver"
+    );
+    assert_eq!(bridge.core().with(|c| c.counters.csi), 3);
     let from_c6 = got
         .iter()
         .filter(|p| p.did == c6.did_string() && p.reach == "espnow")
