@@ -1067,3 +1067,23 @@ yields no reading. Branch `w3/presence-receiver` on `link/roster`.
 Known and older than this: `rusty_esp_iroh-core --features alloc` does
 not build for riscv32imac (`rusty_json_turbo`'s `AtomicU64`), identically
 on the base — the trap rusty_zstd hit; a seam for it is its own change.
+
+---
+
+## 2026-09-23 — the CSI stream rides the link and lands as the oracles' CSV (W5)
+
+A CSI sample (`radar::csi_stream::Sample`, raw I/Q) is one sealed
+payload kind on the link, `MSG_CSI`; the bridge counts it, reports it
+(`Event::Csi`) and re-frames it under `nbrc` beside the neighbour's DID,
+never decoding it. A subscriber asks for `nbrt`, `nbrc` or `any ` and gets
+what it asked for. `host::csi::from_packet` reads `"csi "` (a std device's
+own) and `"nbrc"` (a bridge's neighbour, named by the packet);
+`csi::csv_row` is the ledger's own fixture format, and the reference
+client writes `csi.csv` when given an out-dir — the recording rig the
+plan's hardware steps ask for, with no new tooling.
+
+Counted end to end the way C2 was, on the host: three samples from the
+C6 through the bridge to an `nbrc` subscriber, three received, none lost,
+each decoded with the neighbour's DID and reach, the device's clock, 128
+bytes of I/Q, and the device's own features recomputed at the receiver.
+Branch `w5/csi-stream`, PR #4, on #3 on #2. Nothing has run on a board.
