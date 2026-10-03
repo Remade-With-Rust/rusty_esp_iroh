@@ -11,15 +11,19 @@
 //!
 //! `unsafe` is denied crate-wide; the one FFI call (`esp_vfs_eventfd_register`)
 //! opts in per block with a `// SAFETY:` comment.
+//!
+//! The `esp-hal` feature is not iroh on bare metal (there is none): it is
+//! [`hal`], the two-slot OTA sink and the "this image works" mark the
+//! core's update session needs on a `no_std` chip.
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// iroh has no Track B: it needs std (tokio, rustls), and a no_std node
+// reaches the mesh through rusty_esp_iroh-bridge. What Track B does get is
+// the chip's half of the signed-update path, `hal`.
 #[cfg(feature = "esp-hal")]
-compile_error!(
-    "rusty_esp_iroh has no Track B: iroh needs std (tokio, rustls). A no_std node reaches the \
-     mesh through rusty_esp_iroh-bridge on a Pi, a P4 or a PSRAM ESP32-S3. Enable `esp-idf` instead."
-);
+pub mod hal;
 
 pub use rusty_esp_iroh_core as core;
 
@@ -66,7 +70,7 @@ pub mod idf {
         esp_idf_comp_espressif__mdns_enabled
     ));
 
-    pub use rusty_esp_mid_esp::idf::{EspNvsKv, EspRng, Protection, IDENTITY_PARTITION};
+    pub use rusty_esp_mid_esp::idf::{EspNvsKv, EspRng, IDENTITY_PARTITION, Protection};
 
     pub use ota::EspOtaSink;
 
@@ -252,7 +256,10 @@ pub mod idf {
             .unwrap_or(("_mata-oem-sidecar", "_tcp.local."));
         let proto = rest.split_once('.').map_or("_tcp", |(p, _)| p);
         mdns.add_service(Some(instance), service, proto, port, &pairs)?;
-        log::info!("mdns: {hostname}.local {service}.{proto} port {port} with {} TXT keys", pairs.len());
+        log::info!(
+            "mdns: {hostname}.local {service}.{proto} port {port} with {} TXT keys",
+            pairs.len()
+        );
         Ok(mdns)
     }
 }

@@ -19,14 +19,30 @@ std = ["rusty_esp_iroh-core/std"]
 alloc = ["rusty_esp_iroh-core/alloc"]
 # Track A — std on ESP-IDF: the only track iroh runs on.
 esp-idf = ["std", "dep:esp-idf-svc", "dep:rusty_esp_iroh-host", "dep:rusty_esp_mid-esp"]
-# Track B is a compile error with a message: see lib.rs.
-esp-hal = ["alloc"]
+# Track B -- `no_std` on esp-hal: not iroh (which needs std; see lib.rs) but
+# the chip's half of the signed-update path (N5) under it: the two-slot OTA
+# sink over esp-bootloader-esp-idf's OTA data and esp-storage's flash, and
+# the mark a booted image sets. The chip feature comes from the firmware,
+# as everywhere in the family (killing-C plan, X7).
+esp-hal = [
+    "alloc",
+    "dep:esp-bootloader-esp-idf",
+    "dep:esp-storage",
+    "dep:embedded-storage",
+    "esp-bootloader-esp-idf/embedded-storage",
+]
 
 [dependencies]
 rusty_esp_iroh-core = { workspace = true }
 rusty_esp_iroh-host = { workspace = true, optional = true }
 rusty_esp_mid-esp = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false, features = ["esp-idf"], optional = true }
 esp-idf-svc = { version = "0.52", optional = true }
+# Track B: the C bootloader's partition table and OTA data, read and written
+# in Rust; the flash under them. The firmware names the chip on both.
+esp-bootloader-esp-idf = { version = "=0.6.0", default-features = false, optional = true }
+esp-storage = { version = "=0.10.0", optional = true }
+# the NOR write path of the slot (a page program, not a sector rewrite)
+embedded-storage = { version = "0.3.1", optional = true }
 log = "0.4"
 
 [build-dependencies]

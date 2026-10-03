@@ -139,6 +139,13 @@ impl OtaManifest {
         })
     }
 
+    /// A manifest from its JSON (`.jota`), as the maker's tool writes it.
+    /// `None` when the bytes are not that.
+    #[must_use]
+    pub fn from_json(bytes: &[u8]) -> Option<Self> {
+        serde_json::from_slice(bytes).ok()
+    }
+
     /// The device's checks before any byte: maker, chip, model, size, and
     /// the signature under the maker's own key (the DID carries it).
     pub fn verify(
