@@ -175,9 +175,7 @@ async fn main() {
             let manifest: OtaManifest =
                 serde_json::from_slice(&std::fs::read(&manifest_path).expect("read manifest"))
                     .expect("parse manifest");
-            let outcome = client
-                .ota(&addr, &device_did, &manifest, &image)
-                .await;
+            let outcome = client.ota(&addr, &device_did, &manifest, &image).await;
             match outcome {
                 Ok(o) => println!("ota: {o:?} in {:?}", started.elapsed()),
                 Err(e) => println!("ota: error {e:?} in {:?}", started.elapsed()),

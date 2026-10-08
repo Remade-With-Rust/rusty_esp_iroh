@@ -631,7 +631,8 @@ impl ProtocolHandler for Ota {
                     Ok(mut sink) => {
                         log::info!(
                             "ota: admitted {} ({} bytes) from the owner; writing",
-                            manifest.firmware, manifest.image_len
+                            manifest.firmware,
+                            manifest.image_len
                         );
                         let outcome = match OtaSession::begin(manifest.clone(), sink.as_mut()) {
                             Err(r) => Err(r),
@@ -794,14 +795,24 @@ impl ProtocolHandler for Media {
         // cap+1 panicked the XIAO on (condvar could not be created, out of
         // internal RAM; Run 5, 2026-09-17). The reserve is atomic, so cap+1
         // handlers racing cannot all pass.
-        let prev = self.state.counters.media_live.fetch_add(1, Ordering::AcqRel);
+        let prev = self
+            .state
+            .counters
+            .media_live
+            .fetch_add(1, Ordering::AcqRel);
         if self.max > 0 && prev >= self.max {
-            self.state.counters.media_live.fetch_sub(1, Ordering::AcqRel);
+            self.state
+                .counters
+                .media_live
+                .fetch_sub(1, Ordering::AcqRel);
             self.state
                 .counters
                 .media_refused
                 .fetch_add(1, Ordering::Relaxed);
-            log::warn!("media: refused a subscriber: {prev} of {} already served", self.max);
+            log::warn!(
+                "media: refused a subscriber: {prev} of {} already served",
+                self.max
+            );
             connection.close(1u32.into(), b"busy");
             return Ok(());
         }

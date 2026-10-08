@@ -317,18 +317,33 @@ async fn garbage_on_every_alpn_and_a_flood_leave_the_node_answering() {
     assert_eq!(r.sent(), 40, "{r:?}");
     assert_eq!(r.datagrams, 3, "{r:?}");
     assert!(
-        matches!(client.rpc_anonymous(&addr, Request::Ping).await, Ok(Response::Pong)),
+        matches!(
+            client.rpc_anonymous(&addr, Request::Ping).await,
+            Ok(Response::Pong)
+        ),
         "the node answers after garbage on every ALPN"
     );
 
     // Four subscriptions at once, each its own connection, all served.
     let f = client.flood(&addr, 4, Duration::from_millis(300)).await;
-    assert_eq!(f, rusty_esp_iroh_host::client::FloodReport { ok: 4, failed: 0 });
+    assert_eq!(
+        f,
+        rusty_esp_iroh_host::client::FloodReport { ok: 4, failed: 0 }
+    );
     assert!(
-        matches!(client.rpc_anonymous(&addr, Request::Ping).await, Ok(Response::Pong)),
+        matches!(
+            client.rpc_anonymous(&addr, Request::Ping).await,
+            Ok(Response::Pong)
+        ),
         "the node answers after a flood"
     );
-    assert!(node.state().counters.media_subscribers.load(std::sync::atomic::Ordering::Relaxed) >= 4);
+    assert!(
+        node.state()
+            .counters
+            .media_subscribers
+            .load(std::sync::atomic::Ordering::Relaxed)
+            >= 4
+    );
 
     client.close().await;
     node.shutdown().await;
@@ -341,7 +356,10 @@ async fn a_capped_node_refuses_the_subscriber_beyond_its_cap_and_keeps_answering
     let mut kv = MemoryKv::new();
     let mut rng = InsecureTestRng::seeded(0xCA9);
     let identity = NodeIdentity::load_or_create(&mut kv, &mut rng, "janus").unwrap();
-    let declared = [Declared::available(Capability::IrohLanDirect, "rusty_esp_iroh")];
+    let declared = [Declared::available(
+        Capability::IrohLanDirect,
+        "rusty_esp_iroh",
+    )];
     let manifest = Manifest {
         model: "janus/capped",
         firmware: "0.1.0-test",
@@ -376,14 +394,24 @@ async fn a_capped_node_refuses_the_subscriber_beyond_its_cap_and_keeps_answering
     assert_eq!(f.ok, 2, "{f:?}");
     assert_eq!(f.failed, 2, "{f:?}");
     let c = &node.state().counters;
-    assert_eq!(c.media_refused.load(std::sync::atomic::Ordering::Relaxed), 2);
+    assert_eq!(
+        c.media_refused.load(std::sync::atomic::Ordering::Relaxed),
+        2
+    );
     assert!(
-        matches!(client.rpc_anonymous(&addr, Request::Ping).await, Ok(Response::Pong)),
+        matches!(
+            client.rpc_anonymous(&addr, Request::Ping).await,
+            Ok(Response::Pong)
+        ),
         "the node answers with two live and two refused"
     );
     // and once they are gone, the cap admits again
     tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(c.media_live.load(std::sync::atomic::Ordering::Relaxed), 0, "live count came down");
+    assert_eq!(
+        c.media_live.load(std::sync::atomic::Ordering::Relaxed),
+        0,
+        "live count came down"
+    );
     let again = client.flood(&addr, 1, Duration::from_millis(200)).await;
     assert_eq!(again.ok, 1, "{again:?}");
 

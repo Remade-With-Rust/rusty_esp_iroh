@@ -1,8 +1,8 @@
 //! The client: dial a Janus node by ticket and speak its four protocols.
 
-use std::sync::Arc;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 
@@ -280,9 +280,9 @@ impl Client {
         }
         let mut sent = 0usize;
         for chunk in image.chunks(CHUNK_LEN) {
-            send.write_all(chunk)
-                .await
-                .map_err(|e| ota_stage(HostError::Stream(format!("{e}")), "a chunk", sent, started))?;
+            send.write_all(chunk).await.map_err(|e| {
+                ota_stage(HostError::Stream(format!("{e}")), "a chunk", sent, started)
+            })?;
             sent += chunk.len();
         }
         send.finish()
@@ -588,7 +588,11 @@ async fn join_all<F: Future + Unpin>(mut futs: Vec<F>) -> Vec<F::Output> {
                 }
             }
         }
-        if pending { Poll::Pending } else { Poll::Ready(()) }
+        if pending {
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
     })
     .await;
     out.into_iter().flatten().collect()
