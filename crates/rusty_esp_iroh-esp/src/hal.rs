@@ -27,9 +27,13 @@ use rusty_esp_iroh_core::ota::OtaSink;
 /// Flash writes are whole words: the sink carries up to three bytes of a
 /// chunk over to the next, and pads the last.
 const WORD: usize = 4;
-/// The flash's program unit: an aligned 256-byte page. A write that
-/// straddles two is two program operations (W15).
-const PAGE: usize = 256;
+/// What the sink programs at a time: a whole aligned 4 KB sector. Without
+/// flash encryption that is sixteen page programs, as cheap as programming
+/// the pages one by one (W15). With it, every write to an app slot is
+/// esp-storage's encrypted write, which reads, erases and rewrites the whole
+/// sector it touches: page by page, that was sixteen rewrites of every
+/// sector of an image; sector by sector it is one.
+const PAGE: usize = 4096;
 /// Erase granularity of the slot.
 const SECTOR: u32 = 4096;
 
@@ -66,7 +70,7 @@ struct Writing {
     len: u32,
     /// Bytes programmed so far: a whole number of pages until `finish`.
     written: u32,
-    /// The page being filled (W15: the flash programs whole pages).
+    /// The sector being filled (see [`PAGE`]).
     page: [u8; PAGE],
     held: usize,
 }
