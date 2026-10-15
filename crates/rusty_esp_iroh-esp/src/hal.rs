@@ -177,9 +177,21 @@ impl<'a, 'd> FlashSlots<'a, 'd> {
 /// programs it back for every call -- on the XIAO that was 39 ms per
 /// 220-byte chunk of an update over the link (X9), and nineteen erases of
 /// every sector per image.
+///
+/// Under flash encryption an app slot is always encrypted, and its plain NOR
+/// view refuses (`NotSupported`): every update failed on its first write
+/// (`SinkFailed`) on the first C6 burned, 2026-10-15. The encrypted view
+/// writes through esp-storage's encrypted write, a whole-sector
+/// read-modify-write; the sink's writes are whole sectors (see [`PAGE`]),
+/// and the last partial one is merged into its sector.
 fn program(updater: &mut OtaUpdater<'_, '_>, offset: u32, words: &[u8]) -> Result<()> {
     let (mut region, _) = updater.next_partition().map_err(|_| Error::Hardware)?;
-    let mut nor = region.as_nor_flash().map_err(|_| Error::Hardware)?;
+    if let Ok(mut nor) = region.as_nor_flash() {
+        return NorFlash::write(&mut nor, offset, words).map_err(|_| Error::Hardware);
+    }
+    let mut nor = region
+        .as_nor_flash_encrypted()
+        .map_err(|_| Error::Hardware)?;
     NorFlash::write(&mut nor, offset, words).map_err(|_| Error::Hardware)
 }
 
