@@ -35,7 +35,7 @@ esp-hal = [
 [dependencies]
 rusty_esp_iroh-core = { workspace = true }
 rusty_esp_iroh-host = { workspace = true, optional = true }
-rusty_esp_mid-esp = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false, features = ["esp-idf"], optional = true }
+rusty_esp_mid-esp = { version = "0.1.2", default-features = false, features = ["esp-idf"], optional = true }
 esp-idf-svc = { version = "0.52", optional = true }
 # Track B: the C bootloader's partition table and OTA data, read and written
 # in Rust; the flash under them. The firmware names the chip on both.

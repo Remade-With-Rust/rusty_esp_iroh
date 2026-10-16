@@ -32,16 +32,20 @@ rusty_esp_iroh-core = { path = "crates/rusty_esp_iroh-core", version = "0.1.0", 
 rusty_esp_iroh-esp = { path = "crates/rusty_esp_iroh-esp", version = "0.1.0", default-features = false }
 rusty_esp_iroh-host = { path = "crates/rusty_esp_iroh-host", version = "0.1.0", default-features = false }
 
-# Siblings in the Janus family are consumed BY GIT URL so this repo deploys on
-# its own. Inside the Janus umbrella folder, `.cargo/config.toml` patches the
-# URL to the sibling checkout, so local edits are visible without a push.
-rusty_esp_core = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_core", default-features = false }
-rusty_esp_mid-core = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false }
-rusty_esp_video-core = { version = "0.1", git = "https://github.com/Remade-With-Rust/rusty_esp_video", default-features = false }
+# Siblings in the Janus family are consumed BY PUBLISHED VERSION. They were
+# git URLs on a default branch until 2026-10-15, when rusty_esp_mid's main
+# moved to crates.io rusty_esp_core while this repo still took core from git:
+# two `rusty_esp_core::Error` types in one graph, and iroh-core's `?` on a
+# mid-core result stopped compiling (the committed lock hid it from every job
+# but the firmware build, which re-resolves). A published version cannot move
+# under us that way.
+rusty_esp_core = { version = "0.1.2", default-features = false }
+rusty_esp_mid-core = { version = "0.1.2", default-features = false }
+rusty_esp_video-core = { version = "0.1.2", default-features = false }
 # 0.3: the signal set's setup session (enc-ble) broke the provisioning
 # service; the bridge uses the link, which did not change, but a 0.x minor
 # is a new major to cargo, and signal's main is 0.3.
-rusty_esp_signal-core = { version = "0.3", git = "https://github.com/Remade-With-Rust/rusty_esp_signal", default-features = false }
+rusty_esp_signal-core = { version = "0.3.0", default-features = false }
 
 # Wire serialization for the janus/* ALPNs (Layer 1 may use serde; Layer 0 stays serde-free).
 serde = { version = "1", default-features = false, features = ["derive"] }

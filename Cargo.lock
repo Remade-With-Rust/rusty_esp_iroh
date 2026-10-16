@@ -838,7 +838,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c54e03a951783e8b327515db3f2a2fd0e3bed362a96b066f341ce66ed49b4ead"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -3912,12 +3912,14 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 [[package]]
 name = "rusty_esp_core"
 version = "0.1.2"
-source = "git+https://github.com/Remade-With-Rust/rusty_esp_core#5d6a712e966e06146b8314be7e95287ed34304fa"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70563ca3f8e8ebb1b72543705030bdf152e01221b794f077c112fb4e0b681b6c"
 
 [[package]]
 name = "rusty_esp_dsp"
 version = "0.1.1"
-source = "git+https://github.com/Remade-With-Rust/rusty_esp_dsp#8bab4cc3f82a3df581e3fb512389ed35453e074e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9301a927de1afec792f07068e9f222a5327ea5d55c4b29c53a29478d2293d951"
 dependencies = [
  "libm",
  "rusty_esp_core",
@@ -3925,8 +3927,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_esp_image-core"
-version = "0.1.1"
-source = "git+https://github.com/Remade-With-Rust/rusty_esp_image#126302b0aa50b19780e907d2125ed49ce1862b6a"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cad8b0d928de7155f84d2340ba52a3ec50cdf9c69db9f03cb00c387071b9916"
 dependencies = [
  "embedded-hal 1.0.0",
  "rusty_esp_core",
@@ -4013,7 +4016,8 @@ dependencies = [
 [[package]]
 name = "rusty_esp_mid-core"
 version = "0.1.2"
-source = "git+https://github.com/Remade-With-Rust/rusty_esp_mid#e193b519434e90b7571576cc199321a4b89cc943"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "337743022234681e7b60b217b0be5bf4532f346d6552102179a47b040729aee3"
 dependencies = [
  "base64",
  "bs58",
@@ -4030,7 +4034,8 @@ dependencies = [
 [[package]]
 name = "rusty_esp_mid-esp"
 version = "0.1.2"
-source = "git+https://github.com/Remade-With-Rust/rusty_esp_mid#e193b519434e90b7571576cc199321a4b89cc943"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "117efe5b417173b44d5f6e5141ebf5e4b0d5a10c93a618b08d94f86ccd7ba3e0"
 dependencies = [
  "embuild",
  "esp-idf-svc",
@@ -4040,7 +4045,8 @@ dependencies = [
 [[package]]
 name = "rusty_esp_signal-core"
 version = "0.3.0"
-source = "git+https://github.com/Remade-With-Rust/rusty_esp_signal#1b6763421fbfcf996c4e4b4d5e6aa3a9540518c2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64c69a3f49913da9203e492750d2913bc9f2d0b0fd2a148c6d4962005394f3cf"
 dependencies = [
  "chacha20poly1305",
  "hkdf",
@@ -4057,7 +4063,8 @@ dependencies = [
 [[package]]
 name = "rusty_esp_video-core"
 version = "0.1.2"
-source = "git+https://github.com/Remade-With-Rust/rusty_esp_video#577f71f83cb8b9dae6abf46a85171dbbf28bbe6a"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7a24ac936cd93308a22c2e7cdd6858dcc7390b7af713be27dabd278cfe4dbfc"
 dependencies = [
  "rusty_esp_core",
  "rusty_esp_image-core",
@@ -4654,7 +4661,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",

@@ -17,9 +17,9 @@
 #
 # WHAT A RED RUN MEANS
 #
-# Not necessarily that somebody broke something here. These firmwares take
-# the family crates by git URL on a default branch, so a sibling's change
-# lands in them without a commit in this repository. That is the usual cause
+# Not necessarily that somebody broke something here. A build re-resolves
+# (`cargo update` below), so a new compatible release of any dependency
+# lands in it without a commit in this repository. That is the usual cause
 # and the reason a weekly schedule is the right shape: the question is not
 # "did this push break it" but "does it still build".
 #
@@ -64,7 +64,12 @@ jobs:
           - project: xiao-s3-sense-idf-mesh
             buildtargets: esp32s3
           - project: esp32-c6-idf-mesh
-            buildtargets: esp32c6
+            # esp32s3 as well, though this one is RISC-V: its
+            # rust-toolchain.toml names the `esp` toolchain, and espup
+            # installs that only when an Xtensa target is asked for. With
+            # esp32c6 alone the job failed in seconds: "custom toolchain
+            # 'esp' ... is not installed".
+            buildtargets: esp32c6,esp32s3
     steps:
       - uses: actions/checkout@v4
       - name: Authorise private sibling fetches
