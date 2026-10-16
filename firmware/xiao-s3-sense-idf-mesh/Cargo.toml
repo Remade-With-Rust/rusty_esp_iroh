@@ -61,13 +61,13 @@ anyhow = "1"
 esp-idf-svc = { version = "0.52", default-features = false }
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 
-# Janus crates. Siblings by git URL (the umbrella's .cargo/config.toml patches
-# them to local checkouts); this repo's own crates by path.
-rusty_esp_core = { git = "https://github.com/Remade-With-Rust/rusty_esp_core", default-features = false, features = ["std"] }
-rusty_esp_mid-core = { git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false, features = ["std"] }
+# Janus crates. Siblings by published version (see the workspace manifest);
+# this repo's own crates by path.
+rusty_esp_core = { version = "0.1.2", default-features = false, features = ["std"] }
+rusty_esp_mid-core = { version = "0.1.2", default-features = false, features = ["std"] }
 # `allow-insecure-dev`: the XIAO on the bench has neither flash encryption nor
 # NVS encryption yet; the ledger says so. A shipping build drops this feature.
-rusty_esp_mid-esp = { git = "https://github.com/Remade-With-Rust/rusty_esp_mid", default-features = false, features = ["esp-idf", "allow-insecure-dev"] }
+rusty_esp_mid-esp = { version = "0.1.2", default-features = false, features = ["esp-idf", "allow-insecure-dev"] }
 rusty_esp_iroh-core = { path = "../../crates/rusty_esp_iroh-core", default-features = false, features = ["std"] }
 rusty_esp_iroh-host = { path = "../../crates/rusty_esp_iroh-host", default-features = false }
 rusty_esp_iroh-esp = { path = "../../crates/rusty_esp_iroh-esp", default-features = false, features = ["esp-idf"] }
