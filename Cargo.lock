@@ -3938,7 +3938,7 @@ dependencies = [
 
 [[package]]
 name = "rusty_esp_iroh"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rusty_esp_iroh-core",
  "rusty_esp_iroh-esp",
@@ -3946,7 +3946,7 @@ dependencies = [
 
 [[package]]
 name = "rusty_esp_iroh-bridge"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "env_logger",
  "log",
@@ -3963,7 +3963,7 @@ dependencies = [
 
 [[package]]
 name = "rusty_esp_iroh-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "postcard",
  "rusty_esp_core",
@@ -3975,7 +3975,7 @@ dependencies = [
 
 [[package]]
 name = "rusty_esp_iroh-esp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "embedded-storage",
  "embuild",
@@ -3990,7 +3990,7 @@ dependencies = [
 
 [[package]]
 name = "rusty_esp_iroh-host"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "aes-gcm",

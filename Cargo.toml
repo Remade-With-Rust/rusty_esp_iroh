@@ -7,7 +7,7 @@ members = ["crates/*"]
 exclude = ["firmware/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Remade-With-Rust/rusty_esp_iroh"
@@ -28,9 +28,9 @@ undocumented_unsafe_blocks = "deny"
 [workspace.dependencies]
 # Internal crates carry BOTH path and version so the set publishes to crates.io
 # in lockstep (the rusty_time pattern).
-rusty_esp_iroh-core = { path = "crates/rusty_esp_iroh-core", version = "0.1.0", default-features = false }
-rusty_esp_iroh-esp = { path = "crates/rusty_esp_iroh-esp", version = "0.1.0", default-features = false }
-rusty_esp_iroh-host = { path = "crates/rusty_esp_iroh-host", version = "0.1.0", default-features = false }
+rusty_esp_iroh-core = { path = "crates/rusty_esp_iroh-core", version = "0.1.1", default-features = false }
+rusty_esp_iroh-esp = { path = "crates/rusty_esp_iroh-esp", version = "0.1.1", default-features = false }
+rusty_esp_iroh-host = { path = "crates/rusty_esp_iroh-host", version = "0.1.1", default-features = false }
 
 # Siblings in the Janus family are consumed BY PUBLISHED VERSION. They were
 # git URLs on a default branch until 2026-10-15, when rusty_esp_mid's main

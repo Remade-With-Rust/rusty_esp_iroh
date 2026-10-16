@@ -4,7 +4,9 @@
 
 The ESP-IDF glue a peer-to-peer node needs and nothing more: the notification descriptor the async runtime cannot start without, clock synchronisation before TLS, the local-network advertisement, and the identity out of the key-value partition.
 
-The node and the client themselves are [`rusty_esp_iroh-host`](https://crates.io/crates/rusty_esp_iroh-host), which is plain `std` and runs unchanged on a laptop and on the chip. Track B is **a compile error by design**, with a message: a bare-metal chip reaches the mesh through the bridge.
+The node and the client themselves are [`rusty_esp_iroh-host`](https://crates.io/crates/rusty_esp_iroh-host), which is plain `std` and runs unchanged on a laptop and on the chip. Under Track B (`esp-hal`, `no_std`) this crate is the chip's half of the signed-update path instead: `hal::FlashSlots`, the two-slot OTA sink, and the mark a booted image sets. A bare-metal chip still reaches the mesh through the bridge.
+
+New in 0.1.1: Track B's update slots (it was a compile error in 0.1.0). They write whole 4 KB sectors, and an encrypted slot goes through the flash's encrypted view, so signed updates work on a chip with flash encryption on (found on an ESP32-C6 with release-mode encryption, 2026-10-15). `idf` also re-exports `IDENTITY_PARTITION`.
 
 ## Where the evidence is
 
