@@ -1,6 +1,6 @@
 [package]
 name = "rusty_esp_iroh-esp"
-description = "Track A glue for rusty_esp_iroh on ESP-IDF: eventfd for tokio, SNTP before TLS, the mDNS sidecar advertisement, and the identity from NVS. The node and client themselves are rusty_esp_iroh-host, which is std and runs unchanged on the chip. `esp-hal` is a compile error by design: no_std reaches the mesh through the bridge."
+description = "Track A glue for rusty_esp_iroh on ESP-IDF: eventfd for tokio, SNTP before TLS, the mDNS sidecar advertisement, and the identity from NVS. The node and client themselves are rusty_esp_iroh-host, which is std and runs unchanged on the chip. Under `esp-hal` (no_std) it is the chip's half of the signed-update path instead: the two-slot OTA sink and the mark a booted image sets; no_std reaches the mesh through the bridge."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

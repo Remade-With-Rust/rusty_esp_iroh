@@ -27,9 +27,13 @@ use rusty_esp_iroh_core::ota::OtaSink;
 /// Flash writes are whole words: the sink carries up to three bytes of a
 /// chunk over to the next, and pads the last.
 const WORD: usize = 4;
-/// The flash's program unit: an aligned 256-byte page. A write that
-/// straddles two is two program operations (W15).
-const PAGE: usize = 256;
+/// What the sink programs at a time: a whole aligned 4 KB sector. Without
+/// flash encryption that is sixteen page programs, as cheap as programming
+/// the pages one by one (W15). With it, every write to an app slot is
+/// esp-storage's encrypted write, which reads, erases and rewrites the whole
+/// sector it touches: page by page, that was sixteen rewrites of every
+/// sector of an image; sector by sector it is one.
+const PAGE: usize = 4096;
 /// Erase granularity of the slot.
 const SECTOR: u32 = 4096;
 
@@ -66,7 +70,7 @@ struct Writing {
     len: u32,
     /// Bytes programmed so far: a whole number of pages until `finish`.
     written: u32,
-    /// The page being filled (W15: the flash programs whole pages).
+    /// The sector being filled (see [`PAGE`]).
     page: [u8; PAGE],
     held: usize,
 }
@@ -173,9 +177,21 @@ impl<'a, 'd> FlashSlots<'a, 'd> {
 /// programs it back for every call -- on the XIAO that was 39 ms per
 /// 220-byte chunk of an update over the link (X9), and nineteen erases of
 /// every sector per image.
+///
+/// Under flash encryption an app slot is always encrypted, and its plain NOR
+/// view refuses (`NotSupported`): every update failed on its first write
+/// (`SinkFailed`) on the first C6 burned, 2026-10-15. The encrypted view
+/// writes through esp-storage's encrypted write, a whole-sector
+/// read-modify-write; the sink's writes are whole sectors (see [`PAGE`]),
+/// and the last partial one is merged into its sector.
 fn program(updater: &mut OtaUpdater<'_, '_>, offset: u32, words: &[u8]) -> Result<()> {
     let (mut region, _) = updater.next_partition().map_err(|_| Error::Hardware)?;
-    let mut nor = region.as_nor_flash().map_err(|_| Error::Hardware)?;
+    if let Ok(mut nor) = region.as_nor_flash() {
+        return NorFlash::write(&mut nor, offset, words).map_err(|_| Error::Hardware);
+    }
+    let mut nor = region
+        .as_nor_flash_encrypted()
+        .map_err(|_| Error::Hardware)?;
     NorFlash::write(&mut nor, offset, words).map_err(|_| Error::Hardware)
 }
 
