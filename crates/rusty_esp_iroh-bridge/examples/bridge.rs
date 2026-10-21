@@ -3,7 +3,7 @@
 //! radios; nothing above the `Radio` seam changes).
 //!
 //! ```sh
-//! cargo run -p rusty_esp_iroh-bridge --example bridge -- 192.168.0.224
+//! cargo run -p rusty_esp_iroh-bridge --example bridge -- 192.168.0.224 --allow did:mata:…
 //! # then, with the ticket it prints:
 //! cargo run -p rusty_esp_iroh-host --example client -- <ticket> neighbours
 //! cargo run -p rusty_esp_iroh-host --example client -- <ticket> media 20
@@ -18,6 +18,7 @@ use rusty_esp_core::hal::host::{InsecureTestRng, MemoryKv};
 use rusty_esp_iroh_bridge::sim::NeighbourSim;
 use rusty_esp_iroh_bridge::{Bridge, BridgeCore, FakeBus, HostRng, PeerAddr, Reach};
 use rusty_esp_iroh_host::{Extras, Node, NodeConfig, NodeIdentity};
+use rusty_esp_mid_core::did::Did;
 use rusty_esp_mid_core::key::DeviceKey;
 
 const BRIDGE: PeerAddr = [0x10, 0, 0, 0, 0, 0, 0, 0];
@@ -50,7 +51,21 @@ async fn main() {
         identity.device.device_id().as_str(),
     )
     .expect("bridge key");
-    let core = BridgeCore::new(me, Box::new(HostRng), reach_of);
+    let mut core = BridgeCore::new(me, Box::new(HostRng), reach_of);
+    // The roster: every `--allow did:mata:…` on the command line. With none
+    // the bridge answers no hello at all and says so; an empty roster
+    // refuses everyone, it never admits everyone.
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--allow" {
+            let did = args.next().expect("--allow takes a did:mata:…");
+            core.allow(Did::parse(&did).expect("--allow takes a did:mata:…"));
+        }
+    }
+    match core.roster().len() {
+        0 => eprintln!("bridge: no --allow given: every handshake will be refused"),
+        n => eprintln!("bridge: answering {n} DID(s)"),
+    }
     let bridge = Bridge::start(core, bus.attach(BRIDGE, 250));
     let declared = [
         Declared::available(Capability::IrohLanDirect, "rusty_esp_iroh"),

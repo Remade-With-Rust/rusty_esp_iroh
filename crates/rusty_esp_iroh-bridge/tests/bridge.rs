@@ -27,6 +27,7 @@ const BRIDGE: PeerAddr = [0x10, 0, 0, 0, 0, 0, 0, 0];
 const C6: PeerAddr = [0x01, 0xC6, 0, 0, 0, 0, 0, 0];
 const LORA: PeerAddr = [0x02, 0x1A, 0, 0, 0, 0, 0, 0];
 const IMPOSTOR: PeerAddr = [0x01, 0xBA, 0xD0, 0, 0, 0, 0, 0];
+const STRANGER: PeerAddr = [0x01, 0xBA, 0xD0, 0, 0, 0, 0, 0x77];
 
 fn hex_bytes(s: &str) -> Vec<u8> {
     (0..s.len())
@@ -140,11 +141,34 @@ async fn neighbours_appear_through_the_bridge_with_their_own_signed_manifests() 
     )
     .unwrap();
     impostor.forge_signature("someone-else");
+    // Not on the roster: a valid key, a valid hello, and no answer.
+    let mut stranger = NeighbourSim::new(
+        "stranger",
+        "y",
+        &c6_manifest,
+        bus.attach(STRANGER, 250),
+        BRIDGE,
+        Box::new(HostRng),
+    )
+    .unwrap();
+
+    // The roster. The impostor is on it: it is an adopted device whose
+    // manifest signature is forged, and that arm is the manifest check's,
+    // not the handshake's. The stranger is not.
+    for did in [c6.did_string(), lora.did_string(), impostor.did_string()] {
+        bridge
+            .core()
+            .with(|c| assert!(c.allow(Did::parse(&did).unwrap()), "{did} listed twice"));
+    }
 
     let t = Duration::from_secs(3);
     c6.link(t).unwrap();
     lora.link(t).unwrap();
     impostor.link(t).unwrap();
+    assert!(
+        stranger.link(Duration::from_millis(700)).is_err(),
+        "a DID not on the roster gets no accept"
+    );
     c6.send_manifest().unwrap();
     lora.send_manifest().unwrap();
     impostor.send_manifest().unwrap();
@@ -162,7 +186,11 @@ async fn neighbours_appear_through_the_bridge_with_their_own_signed_manifests() 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let counters = bridge.core().with(|c| c.counters);
-    assert_eq!(counters.hellos, 3);
+    assert_eq!(counters.hellos, 3, "answered: the three on the roster");
+    assert_eq!(
+        counters.denied, 1,
+        "the stranger, refused before any key material"
+    );
     assert_eq!(counters.linked, 3);
     assert_eq!(counters.manifests_ok, 2, "{counters:?}");
     assert_eq!(counters.manifests_bad, 1, "the impostor's manifest");
@@ -204,6 +232,7 @@ async fn neighbours_appear_through_the_bridge_with_their_own_signed_manifests() 
         assert!(n.last_seen_us < 5_000_000);
     }
     assert!(!listed.iter().any(|n| n.did == impostor.did_string()));
+    assert!(!listed.iter().any(|n| n.did == stranger.did_string()));
     // The bridge's own manifest through the verified fetch.
     let own = client.manifest(&addr).await.unwrap();
     assert_eq!(own.did, bridge_did);

@@ -116,6 +116,9 @@ pub enum Event {
 pub struct BridgeCounters {
     /// Hellos answered.
     pub hellos: u32,
+    /// Hellos refused because the DID was not on the roster. Nothing is
+    /// sent back: a refused peer learns nothing, not even that it was seen.
+    pub denied: u32,
     /// Sessions confirmed.
     pub linked: u32,
     /// Manifests that verified.
@@ -158,6 +161,10 @@ pub struct BridgeCore {
     slots: Vec<Slot>,
     events: Vec<Event>,
     lifetime: Micros,
+    /// The DIDs whose hello is answered. Empty refuses everyone: the roster
+    /// is the owner's, and a bridge that answered anyone would front
+    /// strangers to the home computer.
+    roster: Vec<Did>,
     /// Counters, for the ledger.
     pub counters: BridgeCounters,
 }
@@ -174,8 +181,33 @@ impl BridgeCore {
             slots: Vec::new(),
             events: Vec::new(),
             lifetime: DEFAULT_LIFETIME,
+            roster: Vec::new(),
             counters: BridgeCounters::default(),
         }
+    }
+
+    /// Admit `did`: its hello is answered from now on. Returns whether it
+    /// was new. Until a DID is here, nothing is answered.
+    pub fn allow(&mut self, did: Did) -> bool {
+        if self.roster.contains(&did) {
+            return false;
+        }
+        self.roster.push(did);
+        true
+    }
+
+    /// Strike `did`: its next hello is refused. A session it already holds
+    /// is not cut; that is the lifetime's job.
+    pub fn disallow(&mut self, did: &Did) -> bool {
+        let before = self.roster.len();
+        self.roster.retain(|d| d != did);
+        self.roster.len() != before
+    }
+
+    /// The DIDs the bridge answers, as `did:mata:…` strings.
+    #[must_use]
+    pub fn roster(&self) -> Vec<String> {
+        self.roster.iter().map(Did::to_did_string).collect()
     }
 
     /// The bridge's own DID.
@@ -196,7 +228,7 @@ impl BridgeCore {
         now: Micros,
     ) -> Result<Option<Vec<u8>>> {
         if frame.len() == HELLO_LEN && frame[0] == VERSION && frame[1] == KIND_HELLO {
-            return self.on_hello(from, frame, now).map(Some);
+            return self.on_hello(from, frame, now);
         }
         if frame.len() == CONFIRM_LEN && frame[0] == VERSION && frame[1] == KIND_CONFIRM {
             self.on_confirm(from, frame, now)?;
@@ -206,9 +238,30 @@ impl BridgeCore {
         Ok(None)
     }
 
-    fn on_hello(&mut self, from: PeerAddr, hello: &[u8], now: Micros) -> Result<Vec<u8>> {
-        let (pending, accept) =
-            Handshake::respond(&self.me, &mut self.rng, hello, |_| true, now, self.lifetime)?;
+    fn on_hello(&mut self, from: PeerAddr, hello: &[u8], now: Micros) -> Result<Option<Vec<u8>>> {
+        // The roster decides before any key material is derived (that is
+        // where `Handshake::respond` asks). A refusal is counted and logged
+        // as an event, and answered with silence.
+        let roster = &self.roster;
+        let (pending, accept) = match Handshake::respond(
+            &self.me,
+            &mut self.rng,
+            hello,
+            |did| roster.contains(did),
+            now,
+            self.lifetime,
+        ) {
+            Ok(answered) => answered,
+            Err(Error::Denied) => {
+                self.counters.denied += 1;
+                self.events.push(Event::Refused {
+                    addr: from,
+                    why: "not on the roster",
+                });
+                return Ok(None);
+            }
+            Err(e) => return Err(e),
+        };
         self.counters.hellos += 1;
         let reach = (self.reach_of)(&from);
         match self.slot_index(&from) {
@@ -224,7 +277,7 @@ impl BridgeCore {
                 last_seen: now,
             }),
         }
-        Ok(accept.to_vec())
+        Ok(Some(accept.to_vec()))
     }
 
     fn on_confirm(&mut self, from: PeerAddr, confirm: &[u8], now: Micros) -> Result<()> {
